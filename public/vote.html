@@ -34,16 +34,18 @@
     };
 
     userInfoEl.innerHTML = `
-      <b>รหัส:</b> ${user.studentId} &nbsp;|&nbsp;
-      <b>ชื่อ:</b> ${user.name} &nbsp;|&nbsp;
-      <b>กลุ่ม:</b> ${user.group}
+      <b>รหัส:</b> ${escapeHtml(user.studentId)} &nbsp;|&nbsp;
+      <b>ชื่อ:</b> ${escapeHtml(user.name)} &nbsp;|&nbsp;
+      <b>กลุ่ม:</b> ${escapeHtml(user.group)}
     `;
 
-    let scores = {}; // targetId -> score
+    let scores = {};
     let peers = [];
     let classDates = [];
     let attendance = new Set();
+    let myState = null;
     let pollTimer = null;
+    let savingAttendance = false;
 
     async function loadClassDates() {
       if (classDates.length) return;
@@ -51,36 +53,131 @@
         const res = await fetch('/api/class-dates');
         const data = await res.json();
         classDates = data.dates || [];
-      } catch (e) {
-        classDates = [];
+      } catch (e) { classDates = []; }
+    }
+
+    async function loadMe() {
+      try {
+        const res = await fetch(`/api/me/${encodeURIComponent(user.studentId)}`);
+        if (res.status === 404) {
+          localStorage.removeItem('pr_user');
+          window.location.href = 'index.html';
+          return false;
+        }
+        if (!res.ok) return false;
+        myState = await res.json();
+        attendance = new Set(myState.attendance || []);
+        return true;
+      } catch (e) { return false; }
+    }
+
+    async function init() {
+      await Promise.all([loadClassDates(), loadMe()]);
+      render();
+    }
+
+    async function refreshState() {
+      const ok = await loadMe();
+      if (ok) render();
+    }
+
+    function render() {
+      if (!myState) {
+        contentEl.innerHTML = `<div class="message error">เชื่อมต่อเซิร์ฟเวอร์ไม่ได้</div>`;
+        return;
+      }
+      if (myState.hasVoted) {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        renderDone();
+      } else if (myState.votingOpen) {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        loadPeers();
+      } else {
+        renderWaiting();
+        if (!pollTimer) pollTimer = setInterval(refreshState, 3000);
       }
     }
 
-    async function checkStatus() {
+    function attendanceSection(editable) {
+      if (!classDates.length) return '';
+      const items = classDates.map(d => `
+        <label class="date-check">
+          <input type="checkbox" value="${escapeHtml(d.id)}"
+            ${attendance.has(d.id) ? 'checked' : ''}
+            ${editable ? '' : 'disabled'} />
+          <span>${escapeHtml(d.label)}</span>
+        </label>
+      `).join('');
+      const hint = editable
+        ? 'ติ๊กเฉพาะวันที่คุณมาเรียน · บันทึกอัตโนมัติทุกครั้งที่เปลี่ยน'
+        : 'บันทึกแล้ว ไม่สามารถแก้ไขได้';
+      return `
+        <h2>มาเรียนวันไหนบ้าง</h2>
+        <div class="card" style="padding: 14px;">
+          <div class="date-list">${items}</div>
+          <p class="hint" style="margin-top: 8px;">${hint}</p>
+          <p class="hint" id="attendStatus" style="min-height: 18px;"></p>
+        </div>
+      `;
+    }
+
+    function bindAttendanceChange() {
+      contentEl.querySelectorAll('.date-check input').forEach(cb => {
+        if (cb.disabled) return;
+        cb.onchange = async () => {
+          if (cb.checked) attendance.add(cb.value);
+          else attendance.delete(cb.value);
+          await saveAttendance();
+        };
+      });
+    }
+
+    async function saveAttendance() {
+      if (savingAttendance) return;
+      savingAttendance = true;
+      const status = document.getElementById('attendStatus');
+      if (status) {
+        status.textContent = 'กำลังบันทึก...';
+        status.style.color = '#888';
+      }
       try {
-        const res = await fetch('/api/voting-status');
-        const { votingOpen } = await res.json();
-        if (votingOpen) {
-          if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-          await loadClassDates();
-          loadPeers();
-        } else {
-          renderWaiting();
+        const res = await fetch('/api/attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studentId: user.studentId,
+            attendance: Array.from(attendance)
+          })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'บันทึกไม่สำเร็จ');
+        }
+        if (status) {
+          status.textContent = `✓ บันทึกแล้ว (${attendance.size} วัน)`;
+          status.style.color = '#27ae60';
         }
       } catch (e) {
-        contentEl.innerHTML = `<div class="message error">เชื่อมต่อเซิร์ฟเวอร์ไม่ได้</div>`;
+        if (status) {
+          status.textContent = '✗ ' + e.message;
+          status.style.color = '#c33';
+        }
+      } finally {
+        savingAttendance = false;
       }
     }
 
     function renderWaiting() {
       contentEl.innerHTML = `
-        <div class="card" style="text-align: center; padding: 40px;">
-          <h2 style="border: none;">รอระบบเปิดให้โหวต</h2>
-          <p style="color: #777; margin-top: 8px;">หน้าจอจะอัปเดตอัตโนมัติเมื่อระบบเปิดให้โหวต</p>
+        ${attendanceSection(true)}
+        <div class="card" style="text-align: center; padding: 30px; margin-top: 14px;">
+          <h2 style="border:none;">รอระบบเปิดให้โหวต</h2>
+          <p style="color: #777; margin-top: 8px;">ติ๊กวันที่คุณมาเรียนได้เลย ระหว่างรอระบบเปิด</p>
+          <p style="color: #777;">หน้าจอจะอัปเดตอัตโนมัติเมื่อระบบเปิดให้โหวต</p>
           <div style="margin-top: 18px; font-size: 28px;">⏳</div>
         </div>
       `;
-      if (!pollTimer) pollTimer = setInterval(checkStatus, 3000);
+      bindAttendanceChange();
     }
 
     async function loadPeers() {
@@ -89,24 +186,17 @@
         const data = await res.json();
         if (!res.ok) {
           contentEl.innerHTML = `<div class="message error">${data.error}</div>`;
-          if (data.error && data.error.includes('ยังไม่เปิด')) {
-            renderWaiting();
-          }
           return;
         }
         peers = data.peers;
-        if (data.alreadyVoted) {
+        if (peers.length === 0) {
           contentEl.innerHTML = `
-            <div class="card" style="text-align: center; padding: 40px;">
-              <h2 style="border:none; color:#27ae60;">ขอบคุณสำหรับการให้คะแนน</h2>
-              <p style="color: #777; margin-top: 8px;">คุณได้ยืนยันคะแนนเรียบร้อยแล้ว</p>
-              <div style="margin-top: 18px; font-size: 36px;">✓</div>
+            ${attendanceSection(true)}
+            <div class="empty-state" style="margin-top: 14px;">
+              ยังไม่มีเพื่อนในกลุ่ม "${escapeHtml(user.group)}" คนอื่นลงทะเบียน
             </div>
           `;
-          return;
-        }
-        if (peers.length === 0) {
-          contentEl.innerHTML = `<div class="empty-state">ยังไม่มีเพื่อนในกลุ่ม "${user.group}" คนอื่นลงทะเบียน</div>`;
+          bindAttendanceChange();
           return;
         }
         renderPeers();
@@ -130,22 +220,11 @@
         </div>
       `).join('');
 
-      const datesHtml = classDates.map(d => `
-        <label class="date-check">
-          <input type="checkbox" value="${escapeHtml(d.id)}" />
-          <span>${escapeHtml(d.label)}</span>
-        </label>
-      `).join('');
-
       contentEl.innerHTML = `
         <h2>ให้คะแนนเพื่อนในกลุ่ม (1 = น้อยสุด, 5 = มากสุด)</h2>
         ${peersHtml}
 
-        <h2 style="margin-top: 22px;">มาเรียนวันไหนบ้าง</h2>
-        <div class="card" style="padding: 14px;">
-          <div class="date-list">${datesHtml}</div>
-          <p class="hint" style="margin-top: 8px;">ติ๊กเฉพาะวันที่คุณมาเรียน (ติ๊กกี่วันก็ได้ หรือไม่ติ๊กเลยก็ได้)</p>
-        </div>
+        ${attendanceSection(true)}
 
         <button class="primary" id="submitBtn" disabled>ยืนยันคะแนนและการเข้าเรียน</button>
         <p class="hint" id="progressHint">เลือกคะแนนให้ครบทุกคน (0/${peers.length})</p>
@@ -163,12 +242,7 @@
         });
       });
 
-      contentEl.querySelectorAll('.date-check input').forEach(cb => {
-        cb.onchange = () => {
-          if (cb.checked) attendance.add(cb.value);
-          else attendance.delete(cb.value);
-        };
-      });
+      bindAttendanceChange();
 
       document.getElementById('submitBtn').onclick = submitVote;
     }
@@ -185,7 +259,7 @@
       const summary = attendList.length
         ? classDates.filter(d => attendance.has(d.id)).map(d => d.label).join(', ')
         : '(ไม่ได้ติ๊กวันใดเลย)';
-      if (!confirm(`ยืนยันการให้คะแนน?\n\nวันที่มาเรียน: ${summary}\n\nเมื่อยืนยันแล้วไม่สามารถแก้ไขได้`)) return;
+      if (!confirm(`ยืนยันการให้คะแนน?\n\nวันที่มาเรียน: ${summary}\n\nเมื่อยืนยันแล้วไม่สามารถแก้ไขทั้งคะแนนและการเข้าเรียน`)) return;
       const payload = {
         voterId: user.studentId,
         scores: peers.map(p => ({ targetId: p.studentId, score: scores[p.studentId] })),
@@ -202,26 +276,41 @@
           msgEl.innerHTML = `<div class="message error">${data.error}</div>`;
           return;
         }
-        contentEl.innerHTML = `
-          <div class="card" style="text-align: center; padding: 40px;">
-            <h2 style="border:none; color:#27ae60;">บันทึกคะแนนเรียบร้อย</h2>
-            <p style="color: #777; margin-top: 8px;">ขอบคุณสำหรับการให้คะแนน</p>
-            <div style="margin-top: 18px; font-size: 36px;">✓</div>
-          </div>
-        `;
         msgEl.innerHTML = '';
+        await refreshState();
       } catch (e) {
         msgEl.innerHTML = `<div class="message error">เกิดข้อผิดพลาด: ${e.message}</div>`;
       }
     }
 
+    function renderDone() {
+      const tags = classDates.map(d =>
+        attendance.has(d.id)
+          ? `<span class="attend-tag">${escapeHtml(d.label)}</span>`
+          : `<span class="attend-tag absent">${escapeHtml(d.label)}</span>`
+      ).join(' ');
+      contentEl.innerHTML = `
+        <div class="card" style="text-align: center; padding: 40px;">
+          <h2 style="border:none; color:#27ae60;">ขอบคุณสำหรับการให้คะแนน</h2>
+          <p style="color: #777; margin-top: 8px;">คุณได้ยืนยันคะแนนเรียบร้อยแล้ว</p>
+          <div style="margin-top: 18px; font-size: 36px;">✓</div>
+          <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid #e6eaf2;">
+            <div style="margin-bottom: 10px; color: #555; font-size: 14px;">วันที่บันทึกไว้</div>
+            ${classDates.length > 0
+              ? tags
+              : '<span style="color:#888;">-</span>'}
+          </div>
+        </div>
+      `;
+    }
+
     function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, c => ({
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
       }[c]));
     }
 
-    checkStatus();
+    init();
   </script>
 </body>
 </html>

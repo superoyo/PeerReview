@@ -81,6 +81,36 @@ app.get('/api/class-dates', (req, res) => {
   res.json({ dates: CLASS_DATES });
 });
 
+app.get('/api/me/:studentId', (req, res) => {
+  const data = loadData();
+  const user = data.users.find(u => u.studentId === req.params.studentId);
+  if (!user) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+  const hasVoted = data.votes.some(v => v.voterId === user.studentId);
+  res.json({
+    user,
+    hasVoted,
+    attendance: Array.isArray(user.attendance) ? user.attendance : [],
+    votingOpen: data.votingOpen
+  });
+});
+
+app.post('/api/attendance', (req, res) => {
+  const { studentId, attendance } = req.body || {};
+  if (!studentId || !Array.isArray(attendance)) {
+    return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+  }
+  const data = loadData();
+  const user = data.users.find(u => u.studentId === String(studentId).trim());
+  if (!user) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+  if (data.votes.some(v => v.voterId === user.studentId)) {
+    return res.status(409).json({ error: 'คุณยืนยันคะแนนแล้ว ไม่สามารถแก้ไขการเข้าเรียนได้' });
+  }
+  user.attendance = CLASS_DATES.map(d => d.id).filter(id => attendance.includes(id));
+  user.attendanceUpdatedAt = new Date().toISOString();
+  saveData(data);
+  res.json({ ok: true, attendance: user.attendance });
+});
+
 app.get('/api/peers/:studentId', (req, res) => {
   const data = loadData();
   const me = data.users.find(u => u.studentId === req.params.studentId);
@@ -119,9 +149,6 @@ app.post('/api/vote', (req, res) => {
   if (scores.length !== peers.length) {
     return res.status(400).json({ error: 'กรุณาโหวตให้ครบทุกคน' });
   }
-  const cleanAttendance = Array.isArray(attendance)
-    ? CLASS_DATES.map(d => d.id).filter(id => attendance.includes(id))
-    : [];
   const ts = new Date().toISOString();
   scores.forEach(s => {
     data.votes.push({
@@ -132,7 +159,11 @@ app.post('/api/vote', (req, res) => {
       timestamp: ts
     });
   });
-  voter.attendance = cleanAttendance;
+  if (Array.isArray(attendance)) {
+    voter.attendance = CLASS_DATES.map(d => d.id).filter(id => attendance.includes(id));
+  } else if (!Array.isArray(voter.attendance)) {
+    voter.attendance = [];
+  }
   voter.attendanceSubmittedAt = ts;
   saveData(data);
   res.json({ ok: true, message: 'บันทึกคะแนนและการเข้าเรียนเรียบร้อย' });
