@@ -502,6 +502,40 @@ table tbody tr:hover { background: #f9faff; }
   min-height: 0;
 }
 
+/* จอกว้างมาก เช่น ultrawide, โปรเจคเตอร์ → 4 คอลัมน์เรียงเดียว */
+@media (min-aspect-ratio: 2/1) {
+  .groups-grid-2x2 {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: 1fr;
+  }
+}
+
+/* แนวตั้ง (มือถือ portrait, แท็บเล็ต portrait) → 1 คอลัมน์ 4 แถว */
+@media (max-aspect-ratio: 3/4) {
+  .groups-grid-2x2 {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(4, 1fr);
+  }
+}
+
+/* หน้าจอเล็ก (มือถือ) → header เล็กลง, padding ลด */
+@media (max-width: 600px) {
+  .dashboard-fullscreen { padding: 6px 8px; gap: 6px; }
+  .dash-header { padding: 8px 10px; gap: 4px; }
+  .dash-header h1 { font-size: 15px; }
+  .dash-stats { font-size: 12px; gap: 8px; width: 100%; }
+  .dash-links { margin-left: 0; gap: 8px; }
+  .group-card { padding: 8px 10px; }
+  .group-header { margin-bottom: 6px; padding-bottom: 6px; }
+  .group-header h2 { font-size: 14px; }
+  .member-grid {
+    grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+    gap: 6px;
+  }
+  .member-name { font-size: 11px; }
+  .member-id { font-size: 10px; }
+}
+
 .group-card {
   padding: 12px 14px;
   display: flex;
