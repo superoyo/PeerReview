@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard - Peer Review</title>
   <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" onerror="window.__qrFailed=true"></script>
 </head>
 <body class="dashboard-body">
   <div class="container wide dashboard-wrap">
@@ -47,11 +47,24 @@
     const registerUrl = `${location.origin}/`;
     urlEl.textContent = registerUrl;
 
-    QRCode.toCanvas(document.getElementById('qr'), registerUrl, {
-      width: 240,
-      margin: 1,
-      color: { dark: '#222', light: '#ffffff' }
-    });
+    function renderQR() {
+      const canvas = document.getElementById('qr');
+      if (window.__qrFailed || typeof QRCode === 'undefined') {
+        canvas.replaceWith(Object.assign(document.createElement('div'), {
+          style: 'padding: 30px; color: #888; text-align: center; border: 1px dashed #ccc; border-radius: 10px;',
+          textContent: '(QR library โหลดไม่ได้ — ใช้ URL ด้านล่างแทน)'
+        }));
+        return;
+      }
+      try {
+        QRCode.toCanvas(canvas, registerUrl, {
+          width: 240, margin: 1,
+          color: { dark: '#222', light: '#ffffff' }
+        });
+      } catch (e) {
+        console.error('QR render failed', e);
+      }
+    }
 
     async function load() {
       try {
@@ -113,6 +126,7 @@
 
     load();
     setInterval(load, 5000);
+    renderQR();
   </script>
 </body>
 </html>
