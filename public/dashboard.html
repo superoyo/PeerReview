@@ -12,7 +12,8 @@
     <div class="dash-header">
       <h1>Peer Review Dashboard</h1>
       <div class="dash-stats">
-        <span>ผู้ลงทะเบียนทั้งหมด: <b id="total">-</b> คน</span>
+        <span>ผู้ลงทะเบียน: <b id="total">-</b> คน</span>
+        <span>โหวตเสร็จ: <b id="voted" style="color:#27ae60;">-</b> คน</span>
         <span id="voteStateLabel"></span>
       </div>
     </div>
@@ -38,6 +39,7 @@
 
   <script>
     const totalEl = document.getElementById('total');
+    const votedEl = document.getElementById('voted');
     const groupsEl = document.getElementById('groupsDisplay');
     const voteStateEl = document.getElementById('voteStateLabel');
     const urlEl = document.getElementById('url');
@@ -56,6 +58,7 @@
         const res = await fetch('/api/dashboard');
         const data = await res.json();
         totalEl.textContent = data.total;
+        votedEl.textContent = data.votedCount;
         voteStateEl.innerHTML = data.votingOpen
           ? '· <span style="color:#27ae60;font-weight:600;">เปิดให้โหวต</span>'
           : '· <span style="color:#888;">ยังไม่เปิดโหวต</span>';
@@ -68,22 +71,33 @@
     function renderGroups(grouped, groups) {
       groupsEl.innerHTML = groups.map(g => {
         const members = grouped[g] || [];
+        const votedInGroup = members.filter(m => m.hasVoted).length;
         const cards = members.length === 0
           ? `<div class="empty-state" style="padding:18px;">ยังไม่มีคนลงทะเบียน</div>`
-          : members.map(m => `
-              <div class="member-card" title="${escapeHtml(m.studentId)} ${escapeHtml(m.name)}">
-                ${m.selfie
-                  ? `<img src="${escapeHtml(m.selfie)}?t=${Date.now()}" alt="" />`
-                  : `<div class="no-photo">?</div>`}
-                <div class="member-name">${escapeHtml(m.name)}</div>
-                <div class="member-id">${escapeHtml(m.studentId)}</div>
-              </div>
-            `).join('');
+          : members.map(m => {
+              const cls = ['member-card'];
+              if (m.hasVoted) cls.push('voted');
+              if (!m.selfie) cls.push('no-selfie');
+              const badge = m.hasVoted ? '<div class="vote-badge" title="โหวตเสร็จแล้ว">✓</div>' : '';
+              const photo = m.selfie
+                ? `<img src="${escapeHtml(m.selfie)}?t=${Date.now()}" alt="" />`
+                : `<div class="no-photo">?</div>`;
+              return `
+                <div class="${cls.join(' ')}" title="${escapeHtml(m.studentId)} ${escapeHtml(m.name)}${m.hasVoted ? ' · โหวตแล้ว' : ''}">
+                  <div class="member-photo">${photo}${badge}</div>
+                  <div class="member-name">${escapeHtml(m.name)}</div>
+                  <div class="member-id">${escapeHtml(m.studentId)}</div>
+                </div>
+              `;
+            }).join('');
         return `
           <div class="group-card card">
             <div class="group-header">
               <h2>กลุ่ม ${escapeHtml(g)}</h2>
-              <span class="group-count">${members.length} คน</span>
+              <span class="group-count">
+                ${members.length} คน
+                ${members.length > 0 ? `<span class="voted-pill">✓ ${votedInGroup}</span>` : ''}
+              </span>
             </div>
             <div class="member-grid">${cards}</div>
           </div>

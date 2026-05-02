@@ -463,14 +463,21 @@ table tbody tr:hover { background: #f9faff; }
   background: #fafbfd;
   padding: 6px;
   border-radius: 8px;
+  transition: all 0.2s;
+}
+.member-photo {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
 }
 .member-card img,
 .member-card .no-photo {
   width: 100%;
-  aspect-ratio: 1 / 1;
+  height: 100%;
   object-fit: cover;
   border-radius: 50%;
   background: #eef;
+  transition: border 0.2s;
 }
 .member-card .no-photo {
   display: flex;
@@ -479,6 +486,46 @@ table tbody tr:hover { background: #f9faff; }
   color: #aac;
   font-weight: 700;
   font-size: 24px;
+}
+.member-card.no-selfie {
+  opacity: 0.55;
+}
+.member-card.voted {
+  background: #e8f6ec;
+  box-shadow: 0 0 0 2px #27ae60;
+}
+.member-card.voted img {
+  border: 2px solid #27ae60;
+  box-sizing: border-box;
+}
+.vote-badge {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  background: #27ae60;
+  color: #fff;
+  border-radius: 50%;
+  width: 28%;
+  height: 28%;
+  min-width: 22px;
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+}
+.voted-pill {
+  display: inline-block;
+  background: #27ae60;
+  color: #fff;
+  padding: 1px 8px;
+  margin-left: 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
 }
 .member-name {
   font-size: 12px;

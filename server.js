@@ -107,14 +107,19 @@ app.post('/api/selfie', (req, res) => {
 
 app.get('/api/dashboard', (req, res) => {
   const data = loadData();
+  const voterIds = new Set(data.votes.map(v => v.voterId));
   const grouped = {};
   VALID_GROUPS.forEach(g => grouped[g] = []);
+  let votedCount = 0;
   data.users.forEach(u => {
     if (grouped[u.group]) {
+      const hasVoted = voterIds.has(u.studentId);
+      if (hasVoted) votedCount++;
       grouped[u.group].push({
         studentId: u.studentId,
         name: u.name,
-        selfie: u.selfie || null
+        selfie: u.selfie || null,
+        hasVoted
       });
     }
   });
@@ -124,6 +129,7 @@ app.get('/api/dashboard', (req, res) => {
   res.json({
     grouped,
     total: data.users.length,
+    votedCount,
     groups: VALID_GROUPS,
     votingOpen: data.votingOpen
   });
