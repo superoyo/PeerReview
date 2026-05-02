@@ -17,8 +17,13 @@ const CLASS_DATES = [
   { id: '2026-05-02', label: 'May 2, 2026' }
 ];
 const VALID_DATE_IDS = new Set(CLASS_DATES.map(d => d.id));
+const ATTENDANCE_PERCENT_PER_DAY = 5;
+const VALID_GROUPS = ['1', '2', '3', '4'];
 
-app.use(express.json());
+const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 function loadData() {
@@ -53,10 +58,14 @@ app.post('/api/register', (req, res) => {
   if (!studentId || !name || !group) {
     return res.status(400).json({ error: 'กรุณากรอกข้อมูลให้ครบ' });
   }
+  const grpStr = String(group).trim();
+  if (!VALID_GROUPS.includes(grpStr)) {
+    return res.status(400).json({ error: 'กลุ่มต้องเป็น 1, 2, 3, หรือ 4' });
+  }
   const data = loadData();
   const existing = data.users.find(u => u.studentId === String(studentId).trim());
   if (existing) {
-    if (existing.name === name.trim() && existing.group === group.trim()) {
+    if (existing.name === name.trim() && existing.group === grpStr) {
       return res.json({ ok: true, user: existing, message: 'เข้าสู่ระบบสำเร็จ' });
     }
     return res.status(409).json({ error: 'รหัสนักศึกษานี้ถูกลงทะเบียนแล้วด้วยข้อมูลอื่น' });
@@ -64,12 +73,60 @@ app.post('/api/register', (req, res) => {
   const user = {
     studentId: String(studentId).trim(),
     name: name.trim(),
-    group: group.trim(),
+    group: grpStr,
     registeredAt: new Date().toISOString()
   };
   data.users.push(user);
   saveData(data);
   res.json({ ok: true, user, message: 'ลงทะเบียนสำเร็จ' });
+});
+
+app.post('/api/selfie', (req, res) => {
+  const { studentId, image } = req.body || {};
+  if (!studentId || !image) {
+    return res.status(400).json({ error: 'ข้อมูลไม่ครบ' });
+  }
+  const m = String(image).match(/^data:image\/(jpeg|jpg|png|webp);base64,(.+)$/);
+  if (!m) return res.status(400).json({ error: 'รูปไม่ถูกต้อง' });
+  const data = loadData();
+  const user = data.users.find(u => u.studentId === String(studentId).trim());
+  if (!user) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+  let ext = m[1];
+  if (ext === 'jpeg') ext = 'jpg';
+  const buf = Buffer.from(m[2], 'base64');
+  if (buf.length > 8 * 1024 * 1024) {
+    return res.status(413).json({ error: 'รูปมีขนาดใหญ่เกินไป' });
+  }
+  const filename = `${user.studentId}.${ext}`;
+  fs.writeFileSync(path.join(UPLOADS_DIR, filename), buf);
+  user.selfie = `/uploads/${filename}`;
+  user.selfieAt = new Date().toISOString();
+  saveData(data);
+  res.json({ ok: true, url: user.selfie });
+});
+
+app.get('/api/dashboard', (req, res) => {
+  const data = loadData();
+  const grouped = {};
+  VALID_GROUPS.forEach(g => grouped[g] = []);
+  data.users.forEach(u => {
+    if (grouped[u.group]) {
+      grouped[u.group].push({
+        studentId: u.studentId,
+        name: u.name,
+        selfie: u.selfie || null
+      });
+    }
+  });
+  Object.keys(grouped).forEach(g => {
+    grouped[g].sort((a, b) => a.studentId.localeCompare(b.studentId));
+  });
+  res.json({
+    grouped,
+    total: data.users.length,
+    groups: VALID_GROUPS,
+    votingOpen: data.votingOpen
+  });
 });
 
 app.get('/api/voting-status', (req, res) => {
@@ -240,13 +297,19 @@ app.get('/api/admin/scores', requireAdmin, (req, res) => {
       modeScore: mode.display,
       scores: received,
       attendance,
-      attendanceCount: attendance.length
+      attendanceCount: attendance.length,
+      attendanceScore: attendance.length * ATTENDANCE_PERCENT_PER_DAY,
+      selfie: u.selfie || null
     };
   }).sort((a, b) => {
     if (a.group !== b.group) return a.group.localeCompare(b.group);
     return a.studentId.localeCompare(b.studentId);
   });
-  res.json({ scores: result, classDates: CLASS_DATES });
+  res.json({
+    scores: result,
+    classDates: CLASS_DATES,
+    attendancePercent: ATTENDANCE_PERCENT_PER_DAY
+  });
 });
 
 app.post('/api/admin/toggle-voting', requireAdmin, (req, res) => {
@@ -261,7 +324,7 @@ app.get('/api/admin/export', requireAdmin, (req, res) => {
   const dateHeaders = CLASS_DATES.map(d => d.label);
   const rows = [[
     'StudentID', 'Name', 'Group', 'VoteCount', 'ModeScore', 'AllScores',
-    ...dateHeaders, 'AttendanceCount'
+    ...dateHeaders, 'AttendanceCount', 'AttendanceScore(%)', 'SelfieURL'
   ]];
   const sorted = [...data.users].sort((a, b) => {
     if (a.group !== b.group) return a.group.localeCompare(b.group);
@@ -280,7 +343,9 @@ app.get('/api/admin/export', requireAdmin, (req, res) => {
       mode.display,
       received.join('|'),
       ...attendCols,
-      attendance.length
+      attendance.length,
+      attendance.length * ATTENDANCE_PERCENT_PER_DAY,
+      u.selfie || ''
     ]);
   });
   const csv = rows.map(r => r.map(cell => {
@@ -294,6 +359,20 @@ app.get('/api/admin/export', requireAdmin, (req, res) => {
   res.send(out);
 });
 
+app.get('/api/admin/export-json', requireAdmin, (req, res) => {
+  const data = loadData();
+  const exportData = {
+    exportedAt: new Date().toISOString(),
+    classDates: CLASS_DATES,
+    attendancePercent: ATTENDANCE_PERCENT_PER_DAY,
+    validGroups: VALID_GROUPS,
+    ...data
+  };
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="peer-review-data-${Date.now()}.json"`);
+  res.send(JSON.stringify(exportData, null, 2));
+});
+
 app.post('/api/admin/reset', requireAdmin, (req, res) => {
   const { what } = req.body || {};
   const data = loadData();
@@ -303,6 +382,11 @@ app.post('/api/admin/reset', requireAdmin, (req, res) => {
     data.users = [];
     data.votes = [];
     data.votingOpen = false;
+    try {
+      fs.readdirSync(UPLOADS_DIR).forEach(f => {
+        if (f !== '.gitkeep') fs.unlinkSync(path.join(UPLOADS_DIR, f));
+      });
+    } catch (e) { /* ignore */ }
   } else {
     return res.status(400).json({ error: 'invalid reset target' });
   }

@@ -1,5 +1,7 @@
 node_modules/
 data.json
+public/uploads/*
+!public/uploads/.gitkeep
 *.log
 .DS_Store
 .env

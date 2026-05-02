@@ -40,6 +40,7 @@
       <div class="actions">
         <button id="toggleVote" class="success">เปิดให้โหวต</button>
         <button id="exportBtn" class="secondary">Export CSV</button>
+        <button id="exportJsonBtn" class="secondary">Export JSON ทั้งหมด</button>
         <button id="resetVotesBtn" class="danger">ล้างคะแนนโหวต</button>
         <button id="resetAllBtn" class="danger">ล้างข้อมูลทั้งหมด</button>
       </div>
@@ -141,17 +142,26 @@
       await loadStatus();
     };
 
-    document.getElementById('exportBtn').onclick = async () => {
-      const res = await authFetch('/api/admin/export');
+    async function downloadFile(url, defaultName) {
+      const res = await authFetch(url);
       if (!res.ok) { alert('เกิดข้อผิดพลาด'); return; }
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      const dispo = res.headers.get('Content-Disposition') || '';
+      const m = dispo.match(/filename="([^"]+)"/);
+      const filename = m ? m[1] : defaultName;
+      const objUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `peer-review-scores-${Date.now()}.csv`;
+      a.href = objUrl;
+      a.download = filename;
       a.click();
-      URL.revokeObjectURL(url);
-    };
+      URL.revokeObjectURL(objUrl);
+    }
+
+    document.getElementById('exportBtn').onclick = () =>
+      downloadFile('/api/admin/export', `peer-review-scores-${Date.now()}.csv`);
+
+    document.getElementById('exportJsonBtn').onclick = () =>
+      downloadFile('/api/admin/export-json', `peer-review-data-${Date.now()}.json`);
 
     document.getElementById('resetVotesBtn').onclick = async () => {
       if (!confirm('ล้างคะแนนโหวตทั้งหมด? (รายชื่อจะยังอยู่)')) return;
@@ -197,6 +207,7 @@
             <table>
               <thead>
                 <tr>
+                  <th>รูป</th>
                   <th>รหัสนักศึกษา</th>
                   <th>ชื่อ-นามสกุล</th>
                   <th>เวลาลงทะเบียน</th>
@@ -216,8 +227,12 @@
                             : `<span class="attend-tag absent">${escapeHtml(d.label)}</span>`
                           ).join(' ')
                       );
+                  const photo = u.selfie
+                    ? `<img class="thumb" src="${escapeHtml(u.selfie)}" alt="" />`
+                    : `<div class="thumb no-photo">?</div>`;
                   return `
                     <tr>
+                      <td>${photo}</td>
                       <td>${escapeHtml(u.studentId)}</td>
                       <td>${escapeHtml(u.name)}</td>
                       <td>${formatDate(u.registeredAt)}</td>
@@ -243,17 +258,18 @@
     async function loadScores() {
       const res = await authFetch('/api/admin/scores');
       if (!res.ok) return;
-      const { scores, classDates } = await res.json();
+      const { scores, classDates, attendancePercent } = await res.json();
       const el = document.getElementById('scoresTab');
       if (scores.length === 0) {
         el.innerHTML = `<div class="empty-state">ยังไม่มีข้อมูล</div>`;
         return;
       }
       const dates = classDates || [];
+      const pct = attendancePercent || 5;
       const groups = {};
       scores.forEach(s => { if (!groups[s.group]) groups[s.group] = []; groups[s.group].push(s); });
       const groupNames = Object.keys(groups).sort((a, b) => a.localeCompare(b));
-      let html = `<p class="hint">คำนวณคะแนนด้วย <b>Mode (ค่าที่พบบ่อยที่สุด)</b> จากการโหวตที่ได้รับ · การเข้าเรียนรายงานโดยตัวนักศึกษาเองตอนยืนยันคะแนน</p>`;
+      let html = `<p class="hint">คะแนนโหวต = <b>Mode</b> (ค่าที่พบบ่อยที่สุด) · คะแนนเข้าเรียน = ${pct}% × จำนวนวันที่มา (เต็ม ${pct * dates.length}%)</p>`;
       const dateHeaders = dates.map(d => `<th>${escapeHtml(d.label)}</th>`).join('');
       groupNames.forEach(g => {
         html += `
@@ -262,13 +278,15 @@
             <table>
               <thead>
                 <tr>
+                  <th>รูป</th>
                   <th>รหัสนักศึกษา</th>
                   <th>ชื่อ-นามสกุล</th>
                   <th>ผู้โหวต</th>
                   <th>คะแนน Mode</th>
                   <th>คะแนนทั้งหมด</th>
                   ${dateHeaders}
-                  <th>รวมเข้าเรียน</th>
+                  <th>เข้าเรียน</th>
+                  <th>คะแนนเข้าเรียน</th>
                 </tr>
               </thead>
               <tbody>
@@ -277,15 +295,20 @@
                     const attended = (s.attendance || []).includes(d.id);
                     return `<td style="text-align:center;">${attended ? '✓' : '<span style="color:#ccc;">–</span>'}</td>`;
                   }).join('');
+                  const photo = s.selfie
+                    ? `<img class="thumb" src="${escapeHtml(s.selfie)}" alt="" />`
+                    : `<div class="thumb no-photo">?</div>`;
                   return `
                     <tr>
+                      <td>${photo}</td>
                       <td>${escapeHtml(s.studentId)}</td>
                       <td>${escapeHtml(s.name)}</td>
                       <td>${s.voteCount}</td>
                       <td>${s.voteCount > 0 ? `<span class="score-pill">${escapeHtml(s.modeScore)}</span>` : '-'}</td>
                       <td style="color:#777; font-size:13px;">${s.scores.join(', ') || '-'}</td>
                       ${cells}
-                      <td style="text-align:center;font-weight:600;">${s.attendanceCount}/${dates.length}</td>
+                      <td style="text-align:center;">${s.attendanceCount}/${dates.length}</td>
+                      <td style="text-align:center;font-weight:600;color:#4555a6;">${s.attendanceScore}%</td>
                     </tr>
                   `;
                 }).join('')}

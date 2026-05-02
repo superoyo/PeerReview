@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ถ่าย Selfie - Peer Review</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>ถ่าย Selfie ก่อนเข้าระบบ</h1>
+    <p class="subtitle">กรุณาถ่ายภาพเซลฟี่เพื่อยืนยันตัวตน ก่อนเข้าหน้าโหวต</p>
+
+    <div id="userInfo" class="user-info"></div>
+
+    <div class="selfie-stage">
+      <video id="video" autoplay playsinline muted></video>
+      <img id="preview" alt="ภาพถ่าย" hidden />
+      <canvas id="canvas" hidden></canvas>
+    </div>
+
+    <div id="cameraError" class="message error" style="display:none;"></div>
+
+    <div class="selfie-actions">
+      <button type="button" id="captureBtn" class="primary">📷 ถ่ายภาพ</button>
+      <button type="button" id="retakeBtn" class="secondary" hidden>ถ่ายใหม่</button>
+      <button type="button" id="confirmBtn" class="success" hidden>ใช้ภาพนี้ และไปหน้าโหวต</button>
+    </div>
+
+    <div id="status"></div>
+
+    <div style="margin-top: 24px; text-align: center;">
+      <button class="secondary" id="logoutBtn">ออกจากระบบ</button>
+    </div>
+  </div>
+
+  <script>
+    const user = JSON.parse(localStorage.getItem('pr_user') || 'null');
+    if (!user) window.location.href = 'index.html';
+
+    document.getElementById('userInfo').innerHTML = `
+      <b>รหัส:</b> ${escapeHtml(user.studentId)} &nbsp;|&nbsp;
+      <b>ชื่อ:</b> ${escapeHtml(user.name)} &nbsp;|&nbsp;
+      <b>กลุ่ม:</b> ${escapeHtml(user.group)}
+    `;
+
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const preview = document.getElementById('preview');
+    const captureBtn = document.getElementById('captureBtn');
+    const retakeBtn = document.getElementById('retakeBtn');
+    const confirmBtn = document.getElementById('confirmBtn');
+    const errEl = document.getElementById('cameraError');
+    const statusEl = document.getElementById('status');
+
+    let stream = null;
+    let capturedDataUrl = null;
+
+    document.getElementById('logoutBtn').onclick = () => {
+      stopCamera();
+      localStorage.removeItem('pr_user');
+      window.location.href = 'index.html';
+    };
+
+    async function startCamera() {
+      errEl.style.display = 'none';
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } },
+          audio: false
+        });
+        video.srcObject = stream;
+        video.hidden = false;
+        preview.hidden = true;
+      } catch (err) {
+        let msg = err.message || 'เปิดกล้องไม่ได้';
+        if (err.name === 'NotAllowedError') msg = 'คุณปฏิเสธสิทธิ์เข้าถึงกล้อง กรุณาเปิดสิทธิ์ในเบราว์เซอร์';
+        else if (err.name === 'NotFoundError') msg = 'ไม่พบกล้องในเครื่อง';
+        else if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+          msg = 'กล้องต้องใช้ผ่าน HTTPS หรือ localhost';
+        }
+        errEl.innerHTML = `ไม่สามารถเปิดกล้อง: ${msg}`;
+        errEl.style.display = '';
+      }
+    }
+
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+      }
+    }
+
+    captureBtn.onclick = () => {
+      if (!stream) { startCamera(); return; }
+      const w = video.videoWidth, h = video.videoHeight;
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      // Mirror the captured image to match the preview
+      ctx.translate(w, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, w, h);
+      capturedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      preview.src = capturedDataUrl;
+      preview.hidden = false;
+      video.hidden = true;
+      captureBtn.hidden = true;
+      retakeBtn.hidden = false;
+      confirmBtn.hidden = false;
+      stopCamera();
+    };
+
+    retakeBtn.onclick = async () => {
+      capturedDataUrl = null;
+      preview.hidden = true;
+      video.hidden = false;
+      captureBtn.hidden = false;
+      retakeBtn.hidden = true;
+      confirmBtn.hidden = true;
+      statusEl.innerHTML = '';
+      await startCamera();
+    };
+
+    confirmBtn.onclick = async () => {
+      if (!capturedDataUrl) return;
+      confirmBtn.disabled = true;
+      retakeBtn.disabled = true;
+      statusEl.innerHTML = `<div class="message info">กำลังอัปโหลดรูปภาพ...</div>`;
+      try {
+        const res = await fetch('/api/selfie', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ studentId: user.studentId, image: capturedDataUrl })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          statusEl.innerHTML = `<div class="message error">${data.error}</div>`;
+          confirmBtn.disabled = false;
+          retakeBtn.disabled = false;
+          return;
+        }
+        user.selfie = data.url;
+        localStorage.setItem('pr_user', JSON.stringify(user));
+        statusEl.innerHTML = `<div class="message success">อัปโหลดสำเร็จ กำลังเข้าสู่หน้าโหวต...</div>`;
+        setTimeout(() => { window.location.href = 'vote.html'; }, 700);
+      } catch (e) {
+        statusEl.innerHTML = `<div class="message error">เกิดข้อผิดพลาด: ${e.message}</div>`;
+        confirmBtn.disabled = false;
+        retakeBtn.disabled = false;
+      }
+    };
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    window.addEventListener('beforeunload', stopCamera);
+
+    startCamera();
+  </script>
+</body>
+</html>

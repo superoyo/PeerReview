@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard - Peer Review</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body class="dashboard-body">
+  <div class="container wide dashboard-wrap">
+    <div class="dash-header">
+      <h1>Peer Review Dashboard</h1>
+      <div class="dash-stats">
+        <span>ผู้ลงทะเบียนทั้งหมด: <b id="total">-</b> คน</span>
+        <span id="voteStateLabel"></span>
+      </div>
+    </div>
+
+    <div class="dash-grid">
+      <div class="qr-card card">
+        <h2 style="text-align:center;">สแกน QR เพื่อลงทะเบียน</h2>
+        <canvas id="qr"></canvas>
+        <p class="url-text" id="url"></p>
+        <p class="hint">URL ที่เข้ารหัส QR ใช้ที่อยู่ที่เปิดหน้านี้อยู่ — ถ้าจะให้สแกนจากมือถือ ให้เปิด dashboard ด้วยที่อยู่ในเครือข่าย (เช่น 192.168.x.x:3000) ไม่ใช่ localhost</p>
+      </div>
+
+      <div class="groups-display" id="groupsDisplay">
+        <p class="hint">กำลังโหลด...</p>
+      </div>
+    </div>
+
+    <p class="hint" style="text-align: center; margin-top: 24px;">
+      <a href="index.html" style="color: #888; margin-right: 14px;">หน้าลงทะเบียน</a>
+      <a href="admin.html" style="color: #888;">ระบบหลังบ้าน</a>
+    </p>
+  </div>
+
+  <script>
+    const totalEl = document.getElementById('total');
+    const groupsEl = document.getElementById('groupsDisplay');
+    const voteStateEl = document.getElementById('voteStateLabel');
+    const urlEl = document.getElementById('url');
+
+    const registerUrl = `${location.origin}/`;
+    urlEl.textContent = registerUrl;
+
+    QRCode.toCanvas(document.getElementById('qr'), registerUrl, {
+      width: 240,
+      margin: 1,
+      color: { dark: '#222', light: '#ffffff' }
+    });
+
+    async function load() {
+      try {
+        const res = await fetch('/api/dashboard');
+        const data = await res.json();
+        totalEl.textContent = data.total;
+        voteStateEl.innerHTML = data.votingOpen
+          ? '· <span style="color:#27ae60;font-weight:600;">เปิดให้โหวต</span>'
+          : '· <span style="color:#888;">ยังไม่เปิดโหวต</span>';
+        renderGroups(data.grouped, data.groups);
+      } catch (e) {
+        groupsEl.innerHTML = `<div class="message error">โหลดข้อมูลไม่ได้</div>`;
+      }
+    }
+
+    function renderGroups(grouped, groups) {
+      groupsEl.innerHTML = groups.map(g => {
+        const members = grouped[g] || [];
+        const cards = members.length === 0
+          ? `<div class="empty-state" style="padding:18px;">ยังไม่มีคนลงทะเบียน</div>`
+          : members.map(m => `
+              <div class="member-card" title="${escapeHtml(m.studentId)} ${escapeHtml(m.name)}">
+                ${m.selfie
+                  ? `<img src="${escapeHtml(m.selfie)}?t=${Date.now()}" alt="" />`
+                  : `<div class="no-photo">?</div>`}
+                <div class="member-name">${escapeHtml(m.name)}</div>
+                <div class="member-id">${escapeHtml(m.studentId)}</div>
+              </div>
+            `).join('');
+        return `
+          <div class="group-card card">
+            <div class="group-header">
+              <h2>กลุ่ม ${escapeHtml(g)}</h2>
+              <span class="group-count">${members.length} คน</span>
+            </div>
+            <div class="member-grid">${cards}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    load();
+    setInterval(load, 5000);
+  </script>
+</body>
+</html>

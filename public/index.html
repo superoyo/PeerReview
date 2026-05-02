@@ -18,8 +18,14 @@
       <label for="name">ชื่อ - นามสกุล</label>
       <input type="text" id="name" placeholder="เช่น สมชาย ใจดี" required />
 
-      <label for="group">กลุ่ม</label>
-      <input type="text" id="group" placeholder="เช่น A, B, 1, 2" required />
+      <label>เลือกกลุ่ม</label>
+      <div class="group-buttons">
+        <button type="button" class="group-btn" data-group="1">กลุ่ม 1</button>
+        <button type="button" class="group-btn" data-group="2">กลุ่ม 2</button>
+        <button type="button" class="group-btn" data-group="3">กลุ่ม 3</button>
+        <button type="button" class="group-btn" data-group="4">กลุ่ม 4</button>
+      </div>
+      <input type="hidden" id="group" required />
 
       <button type="submit" class="primary">เข้าสู่ระบบ / ลงทะเบียน</button>
     </form>
@@ -27,6 +33,7 @@
     <div id="message"></div>
 
     <p class="hint" style="margin-top: 24px; text-align: center;">
+      <a href="dashboard.html" style="color: #888; margin-right: 14px;">Dashboard</a>
       <a href="admin.html" style="color: #888;">เข้าสู่ระบบสำหรับผู้ดูแล</a>
     </p>
   </div>
@@ -34,20 +41,35 @@
   <script>
     const form = document.getElementById('registerForm');
     const msg = document.getElementById('message');
+    const groupInput = document.getElementById('group');
 
-    // Auto-redirect if already logged in
     const saved = localStorage.getItem('pr_user');
     if (saved) {
-      window.location.href = 'vote.html';
+      const u = JSON.parse(saved);
+      // If already has selfie, go straight to vote; otherwise to selfie
+      if (u.selfie) window.location.href = 'vote.html';
+      else window.location.href = 'selfie.html';
     }
+
+    document.querySelectorAll('.group-btn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.group-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        groupInput.value = btn.dataset.group;
+      };
+    });
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       msg.innerHTML = '';
+      if (!groupInput.value) {
+        msg.innerHTML = `<div class="message error">กรุณาเลือกกลุ่ม</div>`;
+        return;
+      }
       const payload = {
         studentId: document.getElementById('studentId').value.trim(),
         name: document.getElementById('name').value.trim(),
-        group: document.getElementById('group').value.trim()
+        group: groupInput.value
       };
       try {
         const res = await fetch('/api/register', {
@@ -61,8 +83,9 @@
           return;
         }
         localStorage.setItem('pr_user', JSON.stringify(data.user));
-        msg.innerHTML = `<div class="message success">${data.message} กำลังเข้าสู่หน้าโหวต...</div>`;
-        setTimeout(() => { window.location.href = 'vote.html'; }, 600);
+        msg.innerHTML = `<div class="message success">${data.message} กำลังไปถ่ายรูป Selfie...</div>`;
+        const next = data.user.selfie ? 'vote.html' : 'selfie.html';
+        setTimeout(() => { window.location.href = next; }, 600);
       } catch (err) {
         msg.innerHTML = `<div class="message error">เกิดข้อผิดพลาด: ${err.message}</div>`;
       }
