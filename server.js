@@ -9,6 +9,15 @@ const DATA_FILE = path.join(__dirname, 'data.json');
 const ADMIN_USER = 'admin';
 const ADMIN_PASS = 'admin123';
 
+const CLASS_DATES = [
+  { id: '2026-03-28', label: 'Mar 28, 2026' },
+  { id: '2026-04-04', label: 'Apr 4, 2026' },
+  { id: '2026-04-18', label: 'Apr 18, 2026' },
+  { id: '2026-04-25', label: 'Apr 25, 2026' },
+  { id: '2026-05-02', label: 'May 2, 2026' }
+];
+const VALID_DATE_IDS = new Set(CLASS_DATES.map(d => d.id));
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -68,6 +77,10 @@ app.get('/api/voting-status', (req, res) => {
   res.json({ votingOpen: data.votingOpen });
 });
 
+app.get('/api/class-dates', (req, res) => {
+  res.json({ dates: CLASS_DATES });
+});
+
 app.get('/api/peers/:studentId', (req, res) => {
   const data = loadData();
   const me = data.users.find(u => u.studentId === req.params.studentId);
@@ -82,7 +95,7 @@ app.get('/api/peers/:studentId', (req, res) => {
 });
 
 app.post('/api/vote', (req, res) => {
-  const { voterId, scores } = req.body || {};
+  const { voterId, scores, attendance } = req.body || {};
   if (!voterId || !Array.isArray(scores)) {
     return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
   }
@@ -106,6 +119,9 @@ app.post('/api/vote', (req, res) => {
   if (scores.length !== peers.length) {
     return res.status(400).json({ error: 'กรุณาโหวตให้ครบทุกคน' });
   }
+  const cleanAttendance = Array.isArray(attendance)
+    ? CLASS_DATES.map(d => d.id).filter(id => attendance.includes(id))
+    : [];
   const ts = new Date().toISOString();
   scores.forEach(s => {
     data.votes.push({
@@ -116,8 +132,10 @@ app.post('/api/vote', (req, res) => {
       timestamp: ts
     });
   });
+  voter.attendance = cleanAttendance;
+  voter.attendanceSubmittedAt = ts;
   saveData(data);
-  res.json({ ok: true, message: 'บันทึกคะแนนเรียบร้อย' });
+  res.json({ ok: true, message: 'บันทึกคะแนนและการเข้าเรียนเรียบร้อย' });
 });
 
 // ==================== Admin APIs ====================
@@ -149,7 +167,7 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
     if (!grouped[u.group]) grouped[u.group] = [];
     grouped[u.group].push(u);
   });
-  res.json({ users, grouped, votingOpen: data.votingOpen });
+  res.json({ users, grouped, votingOpen: data.votingOpen, classDates: CLASS_DATES });
 });
 
 app.get('/api/admin/votes/:studentId', requireAdmin, (req, res) => {
@@ -182,19 +200,22 @@ app.get('/api/admin/scores', requireAdmin, (req, res) => {
   const result = data.users.map(u => {
     const received = data.votes.filter(v => v.targetId === u.studentId).map(v => v.score);
     const mode = calcMode(received);
+    const attendance = Array.isArray(u.attendance) ? u.attendance : [];
     return {
       studentId: u.studentId,
       name: u.name,
       group: u.group,
       voteCount: received.length,
       modeScore: mode.display,
-      scores: received
+      scores: received,
+      attendance,
+      attendanceCount: attendance.length
     };
   }).sort((a, b) => {
     if (a.group !== b.group) return a.group.localeCompare(b.group);
     return a.studentId.localeCompare(b.studentId);
   });
-  res.json({ scores: result });
+  res.json({ scores: result, classDates: CLASS_DATES });
 });
 
 app.post('/api/admin/toggle-voting', requireAdmin, (req, res) => {
@@ -206,7 +227,11 @@ app.post('/api/admin/toggle-voting', requireAdmin, (req, res) => {
 
 app.get('/api/admin/export', requireAdmin, (req, res) => {
   const data = loadData();
-  const rows = [['StudentID', 'Name', 'Group', 'VoteCount', 'ModeScore', 'AllScores']];
+  const dateHeaders = CLASS_DATES.map(d => d.label);
+  const rows = [[
+    'StudentID', 'Name', 'Group', 'VoteCount', 'ModeScore', 'AllScores',
+    ...dateHeaders, 'AttendanceCount'
+  ]];
   const sorted = [...data.users].sort((a, b) => {
     if (a.group !== b.group) return a.group.localeCompare(b.group);
     return a.studentId.localeCompare(b.studentId);
@@ -214,13 +239,17 @@ app.get('/api/admin/export', requireAdmin, (req, res) => {
   sorted.forEach(u => {
     const received = data.votes.filter(v => v.targetId === u.studentId).map(v => v.score);
     const mode = calcMode(received);
+    const attendance = Array.isArray(u.attendance) ? u.attendance : [];
+    const attendCols = CLASS_DATES.map(d => attendance.includes(d.id) ? 1 : 0);
     rows.push([
       u.studentId,
       u.name,
       u.group,
       received.length,
       mode.display,
-      received.join('|')
+      received.join('|'),
+      ...attendCols,
+      attendance.length
     ]);
   });
   const csv = rows.map(r => r.map(cell => {

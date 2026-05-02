@@ -41,7 +41,20 @@
 
     let scores = {}; // targetId -> score
     let peers = [];
+    let classDates = [];
+    let attendance = new Set();
     let pollTimer = null;
+
+    async function loadClassDates() {
+      if (classDates.length) return;
+      try {
+        const res = await fetch('/api/class-dates');
+        const data = await res.json();
+        classDates = data.dates || [];
+      } catch (e) {
+        classDates = [];
+      }
+    }
 
     async function checkStatus() {
       try {
@@ -49,6 +62,7 @@
         const { votingOpen } = await res.json();
         if (votingOpen) {
           if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+          await loadClassDates();
           loadPeers();
         } else {
           renderWaiting();
@@ -102,7 +116,7 @@
     }
 
     function renderPeers() {
-      const html = peers.map(p => `
+      const peersHtml = peers.map(p => `
         <div class="card">
           <div class="peer-row">
             <div class="peer-info">
@@ -116,10 +130,24 @@
         </div>
       `).join('');
 
+      const datesHtml = classDates.map(d => `
+        <label class="date-check">
+          <input type="checkbox" value="${escapeHtml(d.id)}" />
+          <span>${escapeHtml(d.label)}</span>
+        </label>
+      `).join('');
+
       contentEl.innerHTML = `
         <h2>ให้คะแนนเพื่อนในกลุ่ม (1 = น้อยสุด, 5 = มากสุด)</h2>
-        ${html}
-        <button class="primary" id="submitBtn" disabled>ยืนยันคะแนน</button>
+        ${peersHtml}
+
+        <h2 style="margin-top: 22px;">มาเรียนวันไหนบ้าง</h2>
+        <div class="card" style="padding: 14px;">
+          <div class="date-list">${datesHtml}</div>
+          <p class="hint" style="margin-top: 8px;">ติ๊กเฉพาะวันที่คุณมาเรียน (ติ๊กกี่วันก็ได้ หรือไม่ติ๊กเลยก็ได้)</p>
+        </div>
+
+        <button class="primary" id="submitBtn" disabled>ยืนยันคะแนนและการเข้าเรียน</button>
         <p class="hint" id="progressHint">เลือกคะแนนให้ครบทุกคน (0/${peers.length})</p>
       `;
 
@@ -135,6 +163,13 @@
         });
       });
 
+      contentEl.querySelectorAll('.date-check input').forEach(cb => {
+        cb.onchange = () => {
+          if (cb.checked) attendance.add(cb.value);
+          else attendance.delete(cb.value);
+        };
+      });
+
       document.getElementById('submitBtn').onclick = submitVote;
     }
 
@@ -146,10 +181,15 @@
     }
 
     async function submitVote() {
-      if (!confirm('ยืนยันการให้คะแนน? เมื่อยืนยันแล้วไม่สามารถแก้ไขได้')) return;
+      const attendList = Array.from(attendance);
+      const summary = attendList.length
+        ? classDates.filter(d => attendance.has(d.id)).map(d => d.label).join(', ')
+        : '(ไม่ได้ติ๊กวันใดเลย)';
+      if (!confirm(`ยืนยันการให้คะแนน?\n\nวันที่มาเรียน: ${summary}\n\nเมื่อยืนยันแล้วไม่สามารถแก้ไขได้`)) return;
       const payload = {
         voterId: user.studentId,
-        scores: peers.map(p => ({ targetId: p.studentId, score: scores[p.studentId] }))
+        scores: peers.map(p => ({ targetId: p.studentId, score: scores[p.studentId] })),
+        attendance: attendList
       };
       try {
         const res = await fetch('/api/vote', {

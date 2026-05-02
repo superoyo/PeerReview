@@ -181,12 +181,13 @@
         location.reload();
         return;
       }
-      const { grouped, users } = await res.json();
+      const { grouped, users, classDates } = await res.json();
       const el = document.getElementById('usersTab');
       if (users.length === 0) {
         el.innerHTML = `<div class="empty-state">ยังไม่มีผู้ลงทะเบียน</div>`;
         return;
       }
+      const dates = classDates || [];
       const groupNames = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
       let html = `<p class="hint">รวม ${users.length} คน · ${groupNames.length} กลุ่ม</p>`;
       groupNames.forEach(g => {
@@ -199,21 +200,35 @@
                   <th>รหัสนักศึกษา</th>
                   <th>ชื่อ-นามสกุล</th>
                   <th>เวลาลงทะเบียน</th>
+                  <th>วันที่มาเรียน</th>
                   <th>คะแนนที่ได้รับ</th>
                 </tr>
               </thead>
               <tbody>
-                ${grouped[g].map(u => `
-                  <tr>
-                    <td>${escapeHtml(u.studentId)}</td>
-                    <td>${escapeHtml(u.name)}</td>
-                    <td>${formatDate(u.registeredAt)}</td>
-                    <td>
-                      <button class="secondary view-votes-btn"
-                        data-id="${escapeHtml(u.studentId)}">ดูคะแนน</button>
-                    </td>
-                  </tr>
-                `).join('')}
+                ${grouped[g].map(u => {
+                  const attended = Array.isArray(u.attendance) ? u.attendance : [];
+                  const tags = dates.length === 0
+                    ? '-'
+                    : (u.attendance === undefined
+                        ? '<span style="color:#aaa;font-size:13px;">ยังไม่ได้ส่ง</span>'
+                        : dates.map(d => attended.includes(d.id)
+                            ? `<span class="attend-tag">${escapeHtml(d.label)}</span>`
+                            : `<span class="attend-tag absent">${escapeHtml(d.label)}</span>`
+                          ).join(' ')
+                      );
+                  return `
+                    <tr>
+                      <td>${escapeHtml(u.studentId)}</td>
+                      <td>${escapeHtml(u.name)}</td>
+                      <td>${formatDate(u.registeredAt)}</td>
+                      <td>${tags}</td>
+                      <td>
+                        <button class="secondary view-votes-btn"
+                          data-id="${escapeHtml(u.studentId)}">ดูคะแนน</button>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
               </tbody>
             </table>
           </div>
@@ -228,16 +243,18 @@
     async function loadScores() {
       const res = await authFetch('/api/admin/scores');
       if (!res.ok) return;
-      const { scores } = await res.json();
+      const { scores, classDates } = await res.json();
       const el = document.getElementById('scoresTab');
       if (scores.length === 0) {
         el.innerHTML = `<div class="empty-state">ยังไม่มีข้อมูล</div>`;
         return;
       }
+      const dates = classDates || [];
       const groups = {};
       scores.forEach(s => { if (!groups[s.group]) groups[s.group] = []; groups[s.group].push(s); });
       const groupNames = Object.keys(groups).sort((a, b) => a.localeCompare(b));
-      let html = `<p class="hint">คำนวณคะแนนด้วย <b>Mode (ค่าที่พบบ่อยที่สุด)</b> จากการโหวตที่ได้รับ</p>`;
+      let html = `<p class="hint">คำนวณคะแนนด้วย <b>Mode (ค่าที่พบบ่อยที่สุด)</b> จากการโหวตที่ได้รับ · การเข้าเรียนรายงานโดยตัวนักศึกษาเองตอนยืนยันคะแนน</p>`;
+      const dateHeaders = dates.map(d => `<th>${escapeHtml(d.label)}</th>`).join('');
       groupNames.forEach(g => {
         html += `
           <div class="group-section">
@@ -247,21 +264,31 @@
                 <tr>
                   <th>รหัสนักศึกษา</th>
                   <th>ชื่อ-นามสกุล</th>
-                  <th>จำนวนผู้โหวต</th>
+                  <th>ผู้โหวต</th>
                   <th>คะแนน Mode</th>
                   <th>คะแนนทั้งหมด</th>
+                  ${dateHeaders}
+                  <th>รวมเข้าเรียน</th>
                 </tr>
               </thead>
               <tbody>
-                ${groups[g].map(s => `
-                  <tr>
-                    <td>${escapeHtml(s.studentId)}</td>
-                    <td>${escapeHtml(s.name)}</td>
-                    <td>${s.voteCount}</td>
-                    <td>${s.voteCount > 0 ? `<span class="score-pill">${escapeHtml(s.modeScore)}</span>` : '-'}</td>
-                    <td style="color:#777; font-size:13px;">${s.scores.join(', ') || '-'}</td>
-                  </tr>
-                `).join('')}
+                ${groups[g].map(s => {
+                  const cells = dates.map(d => {
+                    const attended = (s.attendance || []).includes(d.id);
+                    return `<td style="text-align:center;">${attended ? '✓' : '<span style="color:#ccc;">–</span>'}</td>`;
+                  }).join('');
+                  return `
+                    <tr>
+                      <td>${escapeHtml(s.studentId)}</td>
+                      <td>${escapeHtml(s.name)}</td>
+                      <td>${s.voteCount}</td>
+                      <td>${s.voteCount > 0 ? `<span class="score-pill">${escapeHtml(s.modeScore)}</span>` : '-'}</td>
+                      <td style="color:#777; font-size:13px;">${s.scores.join(', ') || '-'}</td>
+                      ${cells}
+                      <td style="text-align:center;font-weight:600;">${s.attendanceCount}/${dates.length}</td>
+                    </tr>
+                  `;
+                }).join('')}
               </tbody>
             </table>
           </div>
