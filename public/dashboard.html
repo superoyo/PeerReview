@@ -5,36 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard - Peer Review</title>
   <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" onerror="window.__qrFailed=true"></script>
 </head>
 <body class="dashboard-body">
-  <div class="container wide dashboard-wrap">
+  <div class="dashboard-fullscreen">
     <div class="dash-header">
       <h1>Peer Review Dashboard</h1>
       <div class="dash-stats">
         <span>ผู้ลงทะเบียน: <b id="total">-</b> คน</span>
         <span>โหวตเสร็จ: <b id="voted" style="color:#27ae60;">-</b> คน</span>
         <span id="voteStateLabel"></span>
+        <span class="dash-links">
+          <a href="index.html">หน้าลงทะเบียน</a>
+          <a href="admin.html">ระบบหลังบ้าน</a>
+        </span>
       </div>
     </div>
 
-    <div class="dash-grid">
-      <div class="qr-card card">
-        <h2 style="text-align:center;">สแกน QR เพื่อลงทะเบียน</h2>
-        <canvas id="qr"></canvas>
-        <p class="url-text" id="url"></p>
-        <p class="hint">URL ที่เข้ารหัส QR ใช้ที่อยู่ที่เปิดหน้านี้อยู่ — ถ้าจะให้สแกนจากมือถือ ให้เปิด dashboard ด้วยที่อยู่ในเครือข่าย (เช่น 192.168.x.x:3000) ไม่ใช่ localhost</p>
-      </div>
-
-      <div class="groups-display" id="groupsDisplay">
-        <p class="hint">กำลังโหลด...</p>
-      </div>
+    <div class="groups-grid-2x2" id="groupsDisplay">
+      <div class="empty-state">กำลังโหลด...</div>
     </div>
-
-    <p class="hint" style="text-align: center; margin-top: 24px;">
-      <a href="index.html" style="color: #888; margin-right: 14px;">หน้าลงทะเบียน</a>
-      <a href="admin.html" style="color: #888;">ระบบหลังบ้าน</a>
-    </p>
   </div>
 
   <script>
@@ -42,29 +31,6 @@
     const votedEl = document.getElementById('voted');
     const groupsEl = document.getElementById('groupsDisplay');
     const voteStateEl = document.getElementById('voteStateLabel');
-    const urlEl = document.getElementById('url');
-
-    const registerUrl = `${location.origin}/`;
-    urlEl.textContent = registerUrl;
-
-    function renderQR() {
-      const canvas = document.getElementById('qr');
-      if (window.__qrFailed || typeof QRCode === 'undefined') {
-        canvas.replaceWith(Object.assign(document.createElement('div'), {
-          style: 'padding: 30px; color: #888; text-align: center; border: 1px dashed #ccc; border-radius: 10px;',
-          textContent: '(QR library โหลดไม่ได้ — ใช้ URL ด้านล่างแทน)'
-        }));
-        return;
-      }
-      try {
-        QRCode.toCanvas(canvas, registerUrl, {
-          width: 240, margin: 1,
-          color: { dark: '#222', light: '#ffffff' }
-        });
-      } catch (e) {
-        console.error('QR render failed', e);
-      }
-    }
 
     async function load() {
       try {
@@ -126,7 +92,6 @@
 
     load();
     setInterval(load, 5000);
-    renderQR();
   </script>
 </body>
 </html>
