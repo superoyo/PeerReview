@@ -206,9 +206,17 @@
     }
 
     function renderPeers() {
-      const peersHtml = peers.map(p => `
+      const peersHtml = peers.map(p => {
+        const photo = p.selfie
+          ? `<img src="${escapeHtml(p.selfie)}" alt="${escapeHtml(p.name)}" />`
+          : `<div class="no-photo">?</div>`;
+        return `
         <div class="card">
           <div class="peer-row">
+            <div class="peer-photo${p.selfie ? ' clickable' : ''}"
+                 ${p.selfie ? `data-photo="${escapeHtml(p.selfie)}" data-name="${escapeHtml(p.name)} (${escapeHtml(p.studentId)})"` : ''}>
+              ${photo}
+            </div>
             <div class="peer-info">
               <div class="pname">${escapeHtml(p.name)}</div>
               <div class="pid">${escapeHtml(p.studentId)}</div>
@@ -218,7 +226,8 @@
             </div>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
 
       contentEl.innerHTML = `
         <h2>ให้คะแนนเพื่อนในกลุ่ม (1 = น้อยสุด, 5 = มากสุด)</h2>
@@ -242,9 +251,32 @@
         });
       });
 
+      contentEl.querySelectorAll('.peer-photo.clickable').forEach(el => {
+        el.onclick = () => openPhotoModal(el.dataset.photo, el.dataset.name);
+      });
+
       bindAttendanceChange();
 
       document.getElementById('submitBtn').onclick = submitVote;
+    }
+
+    function openPhotoModal(url, name) {
+      const overlay = document.createElement('div');
+      overlay.className = 'photo-modal';
+      overlay.innerHTML = `
+        <div class="photo-modal-inner">
+          <img src="${url}" alt="" />
+          <div class="photo-modal-name">${name}</div>
+          <button class="photo-modal-close" type="button">ปิด</button>
+        </div>
+      `;
+      const close = () => overlay.remove();
+      overlay.onclick = (e) => { if (e.target === overlay) close(); };
+      overlay.querySelector('.photo-modal-close').onclick = close;
+      document.addEventListener('keydown', function esc(e) {
+        if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+      });
+      document.body.appendChild(overlay);
     }
 
     function updateProgress() {

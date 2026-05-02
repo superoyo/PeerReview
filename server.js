@@ -132,7 +132,7 @@ app.get('/api/peers/:studentId', (req, res) => {
   const peers = db.getUsers()
     .filter(u => u.group === me.group && u.studentId !== me.studentId)
     .sort((a, b) => a.studentId.localeCompare(b.studentId))
-    .map(p => ({ studentId: p.studentId, name: p.name }));
+    .map(p => ({ studentId: p.studentId, name: p.name, selfie: p.selfie || null }));
   res.json({ me, peers, alreadyVoted: db.hasVoted(me.studentId) });
 });
 
