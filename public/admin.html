@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ระบบหลังบ้าน - Peer Review</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="loginView" class="container">
+    <h1>เข้าสู่ระบบสำหรับผู้ดูแล</h1>
+    <p class="subtitle">กรุณาใส่ข้อมูลผู้ดูแลระบบ</p>
+    <form id="loginForm">
+      <label>ชื่อผู้ใช้</label>
+      <input type="text" id="username" required />
+      <label>รหัสผ่าน</label>
+      <input type="password" id="password" required />
+      <button type="submit" class="primary">เข้าสู่ระบบ</button>
+    </form>
+    <div id="loginMsg"></div>
+    <p class="hint" style="margin-top: 24px; text-align: center;">
+      <a href="index.html" style="color: #888;">← กลับหน้าหลัก</a>
+    </p>
+  </div>
+
+  <div id="dashboardView" class="container wide" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <div>
+        <h1>ระบบหลังบ้าน Peer Review</h1>
+        <p class="subtitle" style="margin: 0;">จัดการการลงทะเบียน การโหวต และคะแนน</p>
+      </div>
+      <button class="secondary" id="logoutBtn">ออกจากระบบ</button>
+    </div>
+
+    <div class="status-bar">
+      <div>
+        สถานะการโหวต:
+        <span id="voteState" class="vote-state closed">กำลังโหลด...</span>
+      </div>
+      <div class="actions">
+        <button id="toggleVote" class="success">เปิดให้โหวต</button>
+        <button id="exportBtn" class="secondary">Export CSV</button>
+        <button id="resetVotesBtn" class="danger">ล้างคะแนนโหวต</button>
+        <button id="resetAllBtn" class="danger">ล้างข้อมูลทั้งหมด</button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="users">รายชื่อผู้ลงทะเบียน</button>
+      <button class="tab" data-tab="scores">คะแนนรวม (Mode)</button>
+    </div>
+
+    <div id="usersTab" class="tab-content"></div>
+    <div id="scoresTab" class="tab-content" style="display: none;"></div>
+  </div>
+
+  <div id="modalRoot"></div>
+
+  <script>
+    let token = localStorage.getItem('pr_admin_token') || null;
+
+    const loginView = document.getElementById('loginView');
+    const dashboardView = document.getElementById('dashboardView');
+
+    if (token) showDashboard();
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const msg = document.getElementById('loginMsg');
+      msg.innerHTML = '';
+      try {
+        const res = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.innerHTML = `<div class="message error">${data.error}</div>`;
+          return;
+        }
+        token = data.token;
+        localStorage.setItem('pr_admin_token', token);
+        showDashboard();
+      } catch (err) {
+        msg.innerHTML = `<div class="message error">${err.message}</div>`;
+      }
+    });
+
+    document.getElementById('logoutBtn').onclick = () => {
+      localStorage.removeItem('pr_admin_token');
+      token = null;
+      dashboardView.style.display = 'none';
+      loginView.style.display = '';
+    };
+
+    function authFetch(url, opts = {}) {
+      return fetch(url, {
+        ...opts,
+        headers: {
+          ...(opts.headers || {}),
+          'X-Admin-Auth': token,
+          ...(opts.body ? { 'Content-Type': 'application/json' } : {})
+        }
+      });
+    }
+
+    async function showDashboard() {
+      loginView.style.display = 'none';
+      dashboardView.style.display = '';
+      await refreshAll();
+    }
+
+    async function refreshAll() {
+      await Promise.all([loadUsers(), loadScores(), loadStatus()]);
+    }
+
+    async function loadStatus() {
+      const res = await fetch('/api/voting-status');
+      const { votingOpen } = await res.json();
+      const stateEl = document.getElementById('voteState');
+      const btn = document.getElementById('toggleVote');
+      if (votingOpen) {
+        stateEl.textContent = 'เปิดให้โหวต';
+        stateEl.className = 'vote-state open';
+        btn.textContent = 'ปิดการโหวต';
+        btn.className = 'danger';
+      } else {
+        stateEl.textContent = 'ปิดอยู่';
+        stateEl.className = 'vote-state closed';
+        btn.textContent = 'เปิดให้โหวต';
+        btn.className = 'success';
+      }
+    }
+
+    document.getElementById('toggleVote').onclick = async () => {
+      const res = await authFetch('/api/admin/toggle-voting', { method: 'POST' });
+      if (!res.ok) { alert('เกิดข้อผิดพลาด'); return; }
+      await loadStatus();
+    };
+
+    document.getElementById('exportBtn').onclick = async () => {
+      const res = await authFetch('/api/admin/export');
+      if (!res.ok) { alert('เกิดข้อผิดพลาด'); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `peer-review-scores-${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    document.getElementById('resetVotesBtn').onclick = async () => {
+      if (!confirm('ล้างคะแนนโหวตทั้งหมด? (รายชื่อจะยังอยู่)')) return;
+      await authFetch('/api/admin/reset', { method: 'POST', body: JSON.stringify({ what: 'votes' }) });
+      await refreshAll();
+    };
+
+    document.getElementById('resetAllBtn').onclick = async () => {
+      if (!confirm('ล้างข้อมูลทั้งหมด รวมถึงรายชื่อ? การกระทำนี้ย้อนกลับไม่ได้')) return;
+      await authFetch('/api/admin/reset', { method: 'POST', body: JSON.stringify({ what: 'all' }) });
+      await refreshAll();
+    };
+
+    document.querySelectorAll('.tab').forEach(t => {
+      t.onclick = () => {
+        document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+        document.getElementById('usersTab').style.display = t.dataset.tab === 'users' ? '' : 'none';
+        document.getElementById('scoresTab').style.display = t.dataset.tab === 'scores' ? '' : 'none';
+      };
+    });
+
+    async function loadUsers() {
+      const res = await authFetch('/api/admin/users');
+      if (res.status === 401) {
+        localStorage.removeItem('pr_admin_token');
+        location.reload();
+        return;
+      }
+      const { grouped, users } = await res.json();
+      const el = document.getElementById('usersTab');
+      if (users.length === 0) {
+        el.innerHTML = `<div class="empty-state">ยังไม่มีผู้ลงทะเบียน</div>`;
+        return;
+      }
+      const groupNames = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
+      let html = `<p class="hint">รวม ${users.length} คน · ${groupNames.length} กลุ่ม</p>`;
+      groupNames.forEach(g => {
+        html += `
+          <div class="group-section">
+            <div class="group-title">กลุ่ม ${escapeHtml(g)} (${grouped[g].length} คน)</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>รหัสนักศึกษา</th>
+                  <th>ชื่อ-นามสกุล</th>
+                  <th>เวลาลงทะเบียน</th>
+                  <th>คะแนนที่ได้รับ</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${grouped[g].map(u => `
+                  <tr>
+                    <td>${escapeHtml(u.studentId)}</td>
+                    <td>${escapeHtml(u.name)}</td>
+                    <td>${formatDate(u.registeredAt)}</td>
+                    <td>
+                      <button class="secondary view-votes-btn"
+                        data-id="${escapeHtml(u.studentId)}">ดูคะแนน</button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      });
+      el.innerHTML = html;
+      el.querySelectorAll('.view-votes-btn').forEach(b => {
+        b.onclick = () => showVoteDetails(b.dataset.id);
+      });
+    }
+
+    async function loadScores() {
+      const res = await authFetch('/api/admin/scores');
+      if (!res.ok) return;
+      const { scores } = await res.json();
+      const el = document.getElementById('scoresTab');
+      if (scores.length === 0) {
+        el.innerHTML = `<div class="empty-state">ยังไม่มีข้อมูล</div>`;
+        return;
+      }
+      const groups = {};
+      scores.forEach(s => { if (!groups[s.group]) groups[s.group] = []; groups[s.group].push(s); });
+      const groupNames = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+      let html = `<p class="hint">คำนวณคะแนนด้วย <b>Mode (ค่าที่พบบ่อยที่สุด)</b> จากการโหวตที่ได้รับ</p>`;
+      groupNames.forEach(g => {
+        html += `
+          <div class="group-section">
+            <div class="group-title">กลุ่ม ${escapeHtml(g)}</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>รหัสนักศึกษา</th>
+                  <th>ชื่อ-นามสกุล</th>
+                  <th>จำนวนผู้โหวต</th>
+                  <th>คะแนน Mode</th>
+                  <th>คะแนนทั้งหมด</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${groups[g].map(s => `
+                  <tr>
+                    <td>${escapeHtml(s.studentId)}</td>
+                    <td>${escapeHtml(s.name)}</td>
+                    <td>${s.voteCount}</td>
+                    <td>${s.voteCount > 0 ? `<span class="score-pill">${escapeHtml(s.modeScore)}</span>` : '-'}</td>
+                    <td style="color:#777; font-size:13px;">${s.scores.join(', ') || '-'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      });
+      el.innerHTML = html;
+    }
+
+    async function showVoteDetails(studentId) {
+      const res = await authFetch(`/api/admin/votes/${encodeURIComponent(studentId)}`);
+      const data = await res.json();
+      const root = document.getElementById('modalRoot');
+      const u = data.user;
+      const rows = data.votes.length > 0
+        ? data.votes.map(v => `
+            <tr>
+              <td>${escapeHtml(v.voterId)}</td>
+              <td>${escapeHtml(v.voterName)}</td>
+              <td><span class="score-pill">${v.score}</span></td>
+              <td style="color:#888;font-size:13px;">${formatDate(v.timestamp)}</td>
+            </tr>
+          `).join('')
+        : `<tr><td colspan="4" style="text-align:center;color:#888;padding:20px;">ยังไม่มีคนโหวต</td></tr>`;
+
+      root.innerHTML = `
+        <div class="modal-backdrop" id="modalBg">
+          <div class="modal" onclick="event.stopPropagation()">
+            <button class="secondary modal-close" id="closeModal">ปิด</button>
+            <h3>คะแนนโหวตของ ${escapeHtml(u.name)} (${escapeHtml(u.studentId)})</h3>
+            <p class="hint" style="margin-bottom: 14px;">
+              กลุ่ม ${escapeHtml(u.group)} ·
+              ผู้โหวต ${data.count} คน ·
+              คะแนน Mode: <b>${data.count > 0 ? escapeHtml(data.mode) : '-'}</b>
+            </p>
+            <table>
+              <thead>
+                <tr><th>รหัสผู้โหวต</th><th>ชื่อ</th><th>คะแนน</th><th>เวลา</th></tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalBg').onclick = () => { root.innerHTML = ''; };
+      document.getElementById('closeModal').onclick = () => { root.innerHTML = ''; };
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    function formatDate(iso) {
+      if (!iso) return '-';
+      const d = new Date(iso);
+      return d.toLocaleString('th-TH', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
+    // Auto-refresh every 5s while dashboard is visible
+    setInterval(() => {
+      if (dashboardView.style.display !== 'none' && token) {
+        refreshAll();
+      }
+    }, 5000);
+  </script>
+</body>
+</html>

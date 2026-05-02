@@ -1,0 +1,12 @@
+{
+  "name": "peer-review",
+  "version": "1.0.0",
+  "description": "ระบบให้คะแนนเพื่อนในกลุ่ม (Peer Review)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

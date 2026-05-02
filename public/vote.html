@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>โหวตคะแนน - Peer Review</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>หน้าให้คะแนนเพื่อนในกลุ่ม</h1>
+
+    <div id="userInfo" class="user-info">กำลังโหลด...</div>
+
+    <div id="content"></div>
+
+    <div id="message"></div>
+
+    <div style="margin-top: 24px; text-align: center;">
+      <button class="secondary" id="logoutBtn">ออกจากระบบ</button>
+    </div>
+  </div>
+
+  <script>
+    const user = JSON.parse(localStorage.getItem('pr_user') || 'null');
+    if (!user) window.location.href = 'index.html';
+
+    const userInfoEl = document.getElementById('userInfo');
+    const contentEl = document.getElementById('content');
+    const msgEl = document.getElementById('message');
+    document.getElementById('logoutBtn').onclick = () => {
+      localStorage.removeItem('pr_user');
+      window.location.href = 'index.html';
+    };
+
+    userInfoEl.innerHTML = `
+      <b>รหัส:</b> ${user.studentId} &nbsp;|&nbsp;
+      <b>ชื่อ:</b> ${user.name} &nbsp;|&nbsp;
+      <b>กลุ่ม:</b> ${user.group}
+    `;
+
+    let scores = {}; // targetId -> score
+    let peers = [];
+    let pollTimer = null;
+
+    async function checkStatus() {
+      try {
+        const res = await fetch('/api/voting-status');
+        const { votingOpen } = await res.json();
+        if (votingOpen) {
+          if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+          loadPeers();
+        } else {
+          renderWaiting();
+        }
+      } catch (e) {
+        contentEl.innerHTML = `<div class="message error">เชื่อมต่อเซิร์ฟเวอร์ไม่ได้</div>`;
+      }
+    }
+
+    function renderWaiting() {
+      contentEl.innerHTML = `
+        <div class="card" style="text-align: center; padding: 40px;">
+          <h2 style="border: none;">รอระบบเปิดให้โหวต</h2>
+          <p style="color: #777; margin-top: 8px;">หน้าจอจะอัปเดตอัตโนมัติเมื่อระบบเปิดให้โหวต</p>
+          <div style="margin-top: 18px; font-size: 28px;">⏳</div>
+        </div>
+      `;
+      if (!pollTimer) pollTimer = setInterval(checkStatus, 3000);
+    }
+
+    async function loadPeers() {
+      try {
+        const res = await fetch(`/api/peers/${encodeURIComponent(user.studentId)}`);
+        const data = await res.json();
+        if (!res.ok) {
+          contentEl.innerHTML = `<div class="message error">${data.error}</div>`;
+          if (data.error && data.error.includes('ยังไม่เปิด')) {
+            renderWaiting();
+          }
+          return;
+        }
+        peers = data.peers;
+        if (data.alreadyVoted) {
+          contentEl.innerHTML = `
+            <div class="card" style="text-align: center; padding: 40px;">
+              <h2 style="border:none; color:#27ae60;">ขอบคุณสำหรับการให้คะแนน</h2>
+              <p style="color: #777; margin-top: 8px;">คุณได้ยืนยันคะแนนเรียบร้อยแล้ว</p>
+              <div style="margin-top: 18px; font-size: 36px;">✓</div>
+            </div>
+          `;
+          return;
+        }
+        if (peers.length === 0) {
+          contentEl.innerHTML = `<div class="empty-state">ยังไม่มีเพื่อนในกลุ่ม "${user.group}" คนอื่นลงทะเบียน</div>`;
+          return;
+        }
+        renderPeers();
+      } catch (e) {
+        contentEl.innerHTML = `<div class="message error">เกิดข้อผิดพลาด: ${e.message}</div>`;
+      }
+    }
+
+    function renderPeers() {
+      const html = peers.map(p => `
+        <div class="card">
+          <div class="peer-row">
+            <div class="peer-info">
+              <div class="pname">${escapeHtml(p.name)}</div>
+              <div class="pid">${escapeHtml(p.studentId)}</div>
+            </div>
+            <div class="score-buttons" data-target="${escapeHtml(p.studentId)}">
+              ${[1,2,3,4,5].map(n => `<button type="button" class="score-btn" data-score="${n}">${n}</button>`).join('')}
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      contentEl.innerHTML = `
+        <h2>ให้คะแนนเพื่อนในกลุ่ม (1 = น้อยสุด, 5 = มากสุด)</h2>
+        ${html}
+        <button class="primary" id="submitBtn" disabled>ยืนยันคะแนน</button>
+        <p class="hint" id="progressHint">เลือกคะแนนให้ครบทุกคน (0/${peers.length})</p>
+      `;
+
+      contentEl.querySelectorAll('.score-buttons').forEach(group => {
+        const target = group.dataset.target;
+        group.querySelectorAll('.score-btn').forEach(btn => {
+          btn.onclick = () => {
+            scores[target] = parseInt(btn.dataset.score);
+            group.querySelectorAll('.score-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            updateProgress();
+          };
+        });
+      });
+
+      document.getElementById('submitBtn').onclick = submitVote;
+    }
+
+    function updateProgress() {
+      const done = Object.keys(scores).length;
+      document.getElementById('progressHint').textContent =
+        `เลือกคะแนนให้ครบทุกคน (${done}/${peers.length})`;
+      document.getElementById('submitBtn').disabled = done !== peers.length;
+    }
+
+    async function submitVote() {
+      if (!confirm('ยืนยันการให้คะแนน? เมื่อยืนยันแล้วไม่สามารถแก้ไขได้')) return;
+      const payload = {
+        voterId: user.studentId,
+        scores: peers.map(p => ({ targetId: p.studentId, score: scores[p.studentId] }))
+      };
+      try {
+        const res = await fetch('/api/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msgEl.innerHTML = `<div class="message error">${data.error}</div>`;
+          return;
+        }
+        contentEl.innerHTML = `
+          <div class="card" style="text-align: center; padding: 40px;">
+            <h2 style="border:none; color:#27ae60;">บันทึกคะแนนเรียบร้อย</h2>
+            <p style="color: #777; margin-top: 8px;">ขอบคุณสำหรับการให้คะแนน</p>
+            <div style="margin-top: 18px; font-size: 36px;">✓</div>
+          </div>
+        `;
+        msgEl.innerHTML = '';
+      } catch (e) {
+        msgEl.innerHTML = `<div class="message error">เกิดข้อผิดพลาด: ${e.message}</div>`;
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    checkStatus();
+  </script>
+</body>
+</html>

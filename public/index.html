@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ลงทะเบียน - Peer Review</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>ระบบให้คะแนนเพื่อน (Peer Review)</h1>
+    <p class="subtitle">กรอกข้อมูลเพื่อเข้าสู่ระบบ</p>
+
+    <form id="registerForm">
+      <label for="studentId">รหัสนักศึกษา</label>
+      <input type="text" id="studentId" placeholder="เช่น 65010001" required />
+
+      <label for="name">ชื่อ - นามสกุล</label>
+      <input type="text" id="name" placeholder="เช่น สมชาย ใจดี" required />
+
+      <label for="group">กลุ่ม</label>
+      <input type="text" id="group" placeholder="เช่น A, B, 1, 2" required />
+
+      <button type="submit" class="primary">เข้าสู่ระบบ / ลงทะเบียน</button>
+    </form>
+
+    <div id="message"></div>
+
+    <p class="hint" style="margin-top: 24px; text-align: center;">
+      <a href="admin.html" style="color: #888;">เข้าสู่ระบบสำหรับผู้ดูแล</a>
+    </p>
+  </div>
+
+  <script>
+    const form = document.getElementById('registerForm');
+    const msg = document.getElementById('message');
+
+    // Auto-redirect if already logged in
+    const saved = localStorage.getItem('pr_user');
+    if (saved) {
+      window.location.href = 'vote.html';
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.innerHTML = '';
+      const payload = {
+        studentId: document.getElementById('studentId').value.trim(),
+        name: document.getElementById('name').value.trim(),
+        group: document.getElementById('group').value.trim()
+      };
+      try {
+        const res = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.innerHTML = `<div class="message error">${data.error}</div>`;
+          return;
+        }
+        localStorage.setItem('pr_user', JSON.stringify(data.user));
+        msg.innerHTML = `<div class="message success">${data.message} กำลังเข้าสู่หน้าโหวต...</div>`;
+        setTimeout(() => { window.location.href = 'vote.html'; }, 600);
+      } catch (err) {
+        msg.innerHTML = `<div class="message error">เกิดข้อผิดพลาด: ${err.message}</div>`;
+      }
+    });
+  </script>
+</body>
+</html>
