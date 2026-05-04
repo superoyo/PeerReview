@@ -77,10 +77,12 @@
     <div class="tabs">
       <button class="tab active" data-tab="users">รายชื่อผู้ลงทะเบียน</button>
       <button class="tab" data-tab="scores">คะแนนรวม (Mode)</button>
+      <button class="tab" data-tab="assignments">งานที่มอบหมาย</button>
     </div>
 
     <div id="usersTab" class="tab-content"></div>
     <div id="scoresTab" class="tab-content" style="display: none;"></div>
+    <div id="assignmentsTab" class="tab-content" style="display: none;"></div>
   </div>
 
   <div id="modalRoot"></div>
@@ -387,8 +389,166 @@
         t.classList.add('active');
         document.getElementById('usersTab').style.display = t.dataset.tab === 'users' ? '' : 'none';
         document.getElementById('scoresTab').style.display = t.dataset.tab === 'scores' ? '' : 'none';
+        document.getElementById('assignmentsTab').style.display = t.dataset.tab === 'assignments' ? '' : 'none';
+        if (t.dataset.tab === 'assignments') loadAssignmentsAdmin();
       };
     });
+
+    async function loadAssignmentsAdmin() {
+      const res = await authFetch(`/api/c/${cid}/admin/assignments`);
+      if (res.status === 401) { logout(); return; }
+      const { assignments } = await res.json();
+      const el = document.getElementById('assignmentsTab');
+      let html = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <p class="hint" style="margin:0;">รวม ${assignments.length} งาน</p>
+          <button class="primary" id="newAssignBtn" style="margin:0;">+ สร้างงานใหม่</button>
+        </div>
+      `;
+      if (assignments.length === 0) {
+        html += `<div class="empty-state">ยังไม่มีงาน</div>`;
+      } else {
+        html += assignments.map(a => `
+          <div class="card" data-aid="${a.id}">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap: 12px; flex-wrap: wrap;">
+              <div style="flex:1; min-width: 240px;">
+                <div style="font-size:16px; font-weight:600; color:#222;">
+                  ${escapeHtml(a.title)}
+                  ${a.type === 'group' ? '<span class="tag-group">งานกลุ่ม</span>' : '<span class="tag-individual">งานเดี่ยว</span>'}
+                  ${a.isOpen ? '<span class="badge-success">เปิดรับ</span>' : '<span class="badge-pending">ปิด</span>'}
+                </div>
+                ${a.description ? `<div style="margin-top:6px; color:#666; font-size:13px;">${escapeHtml(a.description)}</div>` : ''}
+                <div class="hint" style="margin-top:6px;">
+                  ${a.dueDate ? `กำหนดส่ง: ${formatDate(a.dueDate)} · ` : ''}
+                  สร้าง: ${formatDate(a.createdAt)} · ส่งแล้ว ${a.submissionCount} รายการ
+                </div>
+              </div>
+              <div class="cr-actions">
+                <button class="secondary" data-act="view" data-id="${a.id}">ดูที่ส่ง</button>
+                <button class="secondary" data-act="toggle" data-id="${a.id}">${a.isOpen ? 'ปิดรับ' : 'เปิดรับ'}</button>
+                <button class="danger" data-act="delete" data-id="${a.id}">ลบ</button>
+              </div>
+            </div>
+          </div>
+        `).join('');
+      }
+      el.innerHTML = html;
+      document.getElementById('newAssignBtn').onclick = openNewAssignModal;
+      el.querySelectorAll('button[data-act]').forEach(b => {
+        b.onclick = async () => {
+          const id = b.dataset.id;
+          const act = b.dataset.act;
+          if (act === 'delete') {
+            if (!confirm('ลบงานนี้และข้อมูลที่ส่งทั้งหมด?')) return;
+            await authFetch(`/api/c/${cid}/admin/assignments/${id}`, { method: 'DELETE' });
+            loadAssignmentsAdmin();
+          } else if (act === 'toggle') {
+            const cur = assignments.find(x => x.id == id);
+            await authFetch(`/api/c/${cid}/admin/assignments/${id}`, {
+              method: 'PATCH', body: JSON.stringify({ isOpen: !cur.isOpen })
+            });
+            loadAssignmentsAdmin();
+          } else if (act === 'view') {
+            await viewSubmissions(id);
+          }
+        };
+      });
+    }
+
+    function openNewAssignModal() {
+      const root = document.getElementById('modalRoot');
+      root.innerHTML = `
+        <div class="modal-backdrop" id="modalBg">
+          <div class="modal" onclick="event.stopPropagation()">
+            <button class="secondary modal-close" id="closeModal">ปิด</button>
+            <h3>สร้างงานใหม่</h3>
+            <form id="aForm">
+              <label>ชื่องาน</label>
+              <input type="text" id="aTitle" required />
+              <label>คำอธิบาย</label>
+              <textarea id="aDesc" rows="3" placeholder="ไม่บังคับ"></textarea>
+              <label>ประเภท</label>
+              <div class="mode-options">
+                <label class="mode-opt">
+                  <input type="radio" name="aType" value="individual" checked />
+                  <div><b>งานเดี่ยว</b><span>นักศึกษาแต่ละคนส่งของตัวเอง</span></div>
+                </label>
+                <label class="mode-opt">
+                  <input type="radio" name="aType" value="group" />
+                  <div><b>งานกลุ่ม</b><span>ทุกคนในกลุ่มมีงานชิ้นเดียวกัน — ใครส่งก่อนได้</span></div>
+                </label>
+              </div>
+              <label>กำหนดส่ง (ไม่บังคับ)</label>
+              <input type="datetime-local" id="aDue" />
+              <button type="submit" class="primary">สร้างงาน</button>
+              <div id="aMsg"></div>
+            </form>
+          </div>
+        </div>
+      `;
+      const close = () => { document.getElementById('modalRoot').innerHTML = ''; };
+      document.getElementById('closeModal').onclick = close;
+      document.getElementById('modalBg').onclick = (e) => { if (e.target.id === 'modalBg') close(); };
+      document.getElementById('aForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const due = document.getElementById('aDue').value;
+        const payload = {
+          title: document.getElementById('aTitle').value.trim(),
+          description: document.getElementById('aDesc').value.trim(),
+          type: document.querySelector('input[name="aType"]:checked').value,
+          dueDate: due ? new Date(due).toISOString() : ''
+        };
+        const r = await authFetch(`/api/c/${cid}/admin/assignments`, {
+          method: 'POST', body: JSON.stringify(payload)
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          document.getElementById('aMsg').innerHTML = `<div class="message error">${escapeHtml(data.error)}</div>`;
+          return;
+        }
+        close();
+        loadAssignmentsAdmin();
+      };
+    }
+
+    async function viewSubmissions(aid) {
+      const r = await authFetch(`/api/c/${cid}/admin/assignments/${aid}/submissions`);
+      const data = await r.json();
+      const a = data.assignment;
+      const subs = data.submissions || [];
+      const root = document.getElementById('modalRoot');
+      const rows = subs.length === 0
+        ? '<tr><td colspan="6" style="text-align:center;color:#888;padding:20px;">ยังไม่มีคนส่ง</td></tr>'
+        : subs.map(s => `
+            <tr>
+              <td>${s.submitterSelfie ? `<img class="thumb" src="${escapeHtml(s.submitterSelfie)}" />` : `<div class="thumb no-photo">?</div>`}</td>
+              <td>${escapeHtml(s.studentId)}</td>
+              <td>${escapeHtml(s.submitterFullName || s.submitterName)}</td>
+              <td>${s.groupNum ? `กลุ่ม ${escapeHtml(s.groupNum)}` : '-'}</td>
+              <td style="font-size:12px; max-width: 280px;">
+                ${s.content ? `<div>${escapeHtml(s.content)}</div>` : ''}
+                ${s.link ? `<div><a href="${escapeHtml(s.link)}" target="_blank">🔗 ${escapeHtml(s.link)}</a></div>` : ''}
+                ${s.fileUrl ? `<div><a href="${escapeHtml(s.fileUrl)}" target="_blank">📎 ${escapeHtml(s.fileName || 'ไฟล์')}</a></div>` : ''}
+              </td>
+              <td style="font-size:12px;">${formatDate(s.submittedAt)}</td>
+            </tr>
+          `).join('');
+      root.innerHTML = `
+        <div class="modal-backdrop" id="modalBg">
+          <div class="modal" style="max-width:900px;" onclick="event.stopPropagation()">
+            <button class="secondary modal-close" id="closeModal">ปิด</button>
+            <h3>${escapeHtml(a.title)}</h3>
+            <p class="hint">${a.type === 'group' ? 'งานกลุ่ม' : 'งานเดี่ยว'} · ส่งแล้ว ${subs.length} รายการ</p>
+            <table>
+              <thead><tr><th>รูป</th><th>รหัส</th><th>ผู้ส่ง</th><th>กลุ่ม</th><th>เนื้อหา</th><th>เวลา</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      document.getElementById('closeModal').onclick = () => { root.innerHTML = ''; };
+      document.getElementById('modalBg').onclick = (e) => { if (e.target.id === 'modalBg') root.innerHTML = ''; };
+    }
 
     async function loadUsers() {
       const res = await authFetch(`/api/c/${cid}/admin/users`);

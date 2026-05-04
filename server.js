@@ -13,7 +13,7 @@ const ATTENDANCE_PERCENT_PER_DAY = 5;
 console.log(`Data directory: ${db.DATA_DIR}`);
 console.log(`Uploads directory: ${db.UPLOADS_DIR}`);
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '12mb' }));
 app.use('/uploads', express.static(db.UPLOADS_DIR));
 
 // ===== Page routes (must come before express.static for path-based pages) =====
@@ -25,7 +25,9 @@ app.get('/', sendPage('index.html'));
 app.get('/admin', sendPage('admin.html'));
 app.get('/c/:cid', sendPage('c-register.html'));
 app.get('/c/:cid/selfie', sendPage('selfie.html'));
+app.get('/c/:cid/feed', sendPage('feed.html'));
 app.get('/c/:cid/vote', sendPage('vote.html'));
+app.get('/c/:cid/assignments', sendPage('assignments.html'));
 app.get('/c/:cid/dashboard', sendPage('dashboard.html'));
 app.get('/c/:cid/admin', sendPage('admin.html'));
 
@@ -566,6 +568,163 @@ app.post('/api/c/:cid/admin/reset', requireAdmin, loadClassroom, (req, res) => {
   else if (what === 'all') db.resetAll(req.classroom.id);
   else return res.status(400).json({ error: 'invalid reset target' });
   res.json({ ok: true });
+});
+
+// ==================== Feed (classroom hub) APIs ====================
+
+app.get('/api/c/:cid/feed/:studentId', loadClassroom, (req, res) => {
+  const c = req.classroom;
+  const me = db.getUser(c.id, req.params.studentId);
+  if (!me) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+  const allUsers = db.getUsers(c.id);
+  const myGroup = me.group || null;
+  const grouped = {};
+  c.validGroups.forEach(g => grouped[g] = []);
+  allUsers.forEach(u => {
+    const g = u.group || '(ยังไม่มีกลุ่ม)';
+    if (!grouped[g]) grouped[g] = [];
+    grouped[g].push({
+      studentId: u.studentId,
+      name: displayName(u),
+      fullName: fullName(u),
+      nickname: u.nickname,
+      selfie: u.selfie || null,
+      isMe: u.studentId === me.studentId
+    });
+  });
+  Object.keys(grouped).forEach(g => grouped[g].sort((a, b) => a.studentId.localeCompare(b.studentId)));
+  res.json({
+    classroom: { id: c.id, code: c.code, name: c.name, university: c.university,
+                 peerReviewEnabled: c.peerReviewEnabled, votingOpen: c.votingOpen },
+    me,
+    myGroup,
+    grouped,
+    groups: c.validGroups,
+    assignmentCount: db.getAssignments(c.id).filter(a => a.isOpen).length
+  });
+});
+
+// ==================== Assignment APIs ====================
+
+app.get('/api/c/:cid/assignments', loadClassroom, (req, res) => {
+  const list = db.getAssignments(req.classroom.id);
+  res.json({ assignments: list });
+});
+
+app.get('/api/c/:cid/assignments/:aid/submission/:studentId', loadClassroom, (req, res) => {
+  const a = db.getAssignment(req.params.aid);
+  if (!a || a.classroomId !== req.classroom.id) return res.status(404).json({ error: 'ไม่พบงาน' });
+  const me = db.getUser(req.classroom.id, req.params.studentId);
+  if (!me) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+  let sub;
+  if (a.type === 'group') {
+    sub = me.group ? db.getSubmissionByGroup(a.id, me.group) : null;
+  } else {
+    sub = db.getSubmissionByStudent(a.id, me.studentId);
+  }
+  let submitter = null;
+  if (sub && sub.studentId) {
+    const u = db.getUser(req.classroom.id, sub.studentId);
+    if (u) submitter = displayName(u);
+  }
+  res.json({ assignment: a, submission: sub, submitter });
+});
+
+app.post('/api/c/:cid/assignments/:aid/submit', loadClassroom, (req, res) => {
+  const c = req.classroom;
+  const a = db.getAssignment(req.params.aid);
+  if (!a || a.classroomId !== c.id) return res.status(404).json({ error: 'ไม่พบงาน' });
+  if (!a.isOpen) return res.status(403).json({ error: 'งานนี้ปิดรับการส่งแล้ว' });
+  const { studentId, content, link, fileData, fileName } = req.body || {};
+  if (!studentId) return res.status(400).json({ error: 'ไม่ทราบรหัสนักศึกษา' });
+  const me = db.getUser(c.id, studentId);
+  if (!me) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+  if (a.type === 'group' && !me.group) {
+    return res.status(400).json({ error: 'งานกลุ่ม — คุณยังไม่มีกลุ่ม' });
+  }
+  // Optional file upload (base64)
+  let fileUrl, savedName;
+  if (fileData && fileName) {
+    const m = String(fileData).match(/^data:([^;]+);base64,(.+)$/);
+    if (!m) return res.status(400).json({ error: 'รูปแบบไฟล์ไม่ถูกต้อง' });
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > 10 * 1024 * 1024) return res.status(413).json({ error: 'ไฟล์ใหญ่เกิน 10 MB' });
+    const safeName = String(fileName).replace(/[^\w฀-๿.\-]+/g, '_').slice(-80);
+    savedName = `sub_${c.id}_${a.id}_${studentId}_${Date.now()}_${safeName}`;
+    fs.writeFileSync(path.join(db.SUBMISSIONS_DIR, savedName), buf);
+    fileUrl = `/uploads/submissions/${savedName}`;
+  }
+  if (!content && !link && !fileUrl) {
+    return res.status(400).json({ error: 'กรุณาใส่ข้อความ ลิงก์ หรือแนบไฟล์' });
+  }
+  const sub = db.upsertSubmission({
+    assignmentId: a.id,
+    classroomId: c.id,
+    studentId: me.studentId,
+    groupNum: a.type === 'group' ? me.group : '',
+    type: a.type,
+    content: content || '',
+    link: link || '',
+    fileUrl: fileUrl,
+    fileName: fileName || '',
+    submittedAt: new Date().toISOString()
+  });
+  res.json({ ok: true, submission: sub });
+});
+
+// Admin
+
+app.get('/api/c/:cid/admin/assignments', requireAdmin, loadClassroom, (req, res) => {
+  const list = db.getAssignments(req.classroom.id).map(a => {
+    const subs = db.getSubmissionsForAssignment(a.id);
+    return { ...a, submissionCount: subs.length };
+  });
+  res.json({ assignments: list });
+});
+
+app.post('/api/c/:cid/admin/assignments', requireAdmin, loadClassroom, (req, res) => {
+  const { title, description, type, dueDate, isOpen } = req.body || {};
+  if (!title) return res.status(400).json({ error: 'กรุณากรอกชื่องาน' });
+  const a = db.createAssignment({
+    classroomId: req.classroom.id,
+    title: String(title).trim(),
+    description: String(description || '').trim(),
+    type: type === 'group' ? 'group' : 'individual',
+    dueDate: dueDate || '',
+    createdAt: new Date().toISOString(),
+    isOpen: isOpen !== false
+  });
+  res.json({ ok: true, assignment: a });
+});
+
+app.patch('/api/c/:cid/admin/assignments/:aid', requireAdmin, loadClassroom, (req, res) => {
+  const a = db.getAssignment(req.params.aid);
+  if (!a || a.classroomId !== req.classroom.id) return res.status(404).json({ error: 'ไม่พบงาน' });
+  const updated = db.updateAssignment(a.id, req.body || {});
+  res.json({ ok: true, assignment: updated });
+});
+
+app.delete('/api/c/:cid/admin/assignments/:aid', requireAdmin, loadClassroom, (req, res) => {
+  const a = db.getAssignment(req.params.aid);
+  if (!a || a.classroomId !== req.classroom.id) return res.status(404).json({ error: 'ไม่พบงาน' });
+  db.deleteAssignment(a.id);
+  res.json({ ok: true });
+});
+
+app.get('/api/c/:cid/admin/assignments/:aid/submissions', requireAdmin, loadClassroom, (req, res) => {
+  const a = db.getAssignment(req.params.aid);
+  if (!a || a.classroomId !== req.classroom.id) return res.status(404).json({ error: 'ไม่พบงาน' });
+  const subs = db.getSubmissionsForAssignment(a.id);
+  const enriched = subs.map(s => {
+    const u = db.getUser(req.classroom.id, s.studentId);
+    return {
+      ...s,
+      submitterName: u ? displayName(u) : '(ไม่พบ)',
+      submitterFullName: u ? fullName(u) : '',
+      submitterSelfie: u ? (u.selfie || null) : null
+    };
+  });
+  res.json({ assignment: a, submissions: enriched });
 });
 
 app.listen(PORT, () => {

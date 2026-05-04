@@ -131,6 +131,38 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_votes_target ON votes(targetId);
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    classroomId TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    type TEXT NOT NULL DEFAULT 'individual',
+    dueDate TEXT,
+    createdAt TEXT NOT NULL,
+    isOpen INTEGER DEFAULT 1
+  );
+  CREATE INDEX IF NOT EXISTS idx_assignments_classroom ON assignments(classroomId);
+
+  CREATE TABLE IF NOT EXISTS submissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    assignmentId INTEGER NOT NULL,
+    classroomId TEXT NOT NULL,
+    studentId TEXT NOT NULL,
+    groupNum TEXT,
+    content TEXT,
+    link TEXT,
+    fileUrl TEXT,
+    fileName TEXT,
+    submittedAt TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_submissions_assignment ON submissions(assignmentId);
+  CREATE INDEX IF NOT EXISTS idx_submissions_classroom ON submissions(classroomId);
+`);
+
+const SUBMISSIONS_DIR = path.join(UPLOADS_DIR, 'submissions');
+if (!fs.existsSync(SUBMISSIONS_DIR)) fs.mkdirSync(SUBMISSIONS_DIR, { recursive: true });
+
 // ---------- Default GE 207 classroom ----------
 function ensureDefaultClassroom() {
   const cnt = db.prepare('SELECT COUNT(*) c FROM classrooms').get().c;
@@ -259,8 +291,38 @@ function slugify(s) {
     .replace(/^-|-$/g, '') || 'class';
 }
 
+function rowToAssignment(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    classroomId: r.classroomId,
+    title: r.title,
+    description: r.description || '',
+    type: r.type || 'individual',
+    dueDate: r.dueDate || '',
+    createdAt: r.createdAt,
+    isOpen: !!r.isOpen
+  };
+}
+function rowToSubmission(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    assignmentId: r.assignmentId,
+    classroomId: r.classroomId,
+    studentId: r.studentId,
+    groupNum: r.groupNum || '',
+    content: r.content || '',
+    link: r.link || '',
+    fileUrl: r.fileUrl || '',
+    fileName: r.fileName || '',
+    submittedAt: r.submittedAt
+  };
+}
+
 module.exports = {
   DATA_DIR, UPLOADS_DIR,
+  SUBMISSIONS_DIR,
   DEFAULT_CLASS_DATES, DEFAULT_GROUPS,
   slugify,
 
@@ -406,7 +468,98 @@ module.exports = {
     return {
       classroom: this.getClassroom(classroomId),
       users: this.getUsers(classroomId),
-      votes: this.getAllVotes(classroomId)
+      votes: this.getAllVotes(classroomId),
+      assignments: this.getAssignments(classroomId),
+      submissions: this.getAllSubmissions(classroomId)
     };
+  },
+
+  // ===== Assignments =====
+  getAssignments(classroomId) {
+    return db.prepare('SELECT * FROM assignments WHERE classroomId = ? ORDER BY createdAt DESC')
+      .all(classroomId).map(rowToAssignment);
+  },
+  getAssignment(id) {
+    return rowToAssignment(db.prepare('SELECT * FROM assignments WHERE id = ?').get(id));
+  },
+  createAssignment(a) {
+    const r = db.prepare(`INSERT INTO assignments (classroomId, title, description, type, dueDate, createdAt, isOpen)
+                          VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+      a.classroomId, a.title, a.description || '',
+      a.type || 'individual',
+      a.dueDate || '',
+      a.createdAt, a.isOpen ? 1 : 0
+    );
+    return this.getAssignment(r.lastInsertRowid);
+  },
+  updateAssignment(id, fields) {
+    const sets = [], vals = [];
+    ['title', 'description', 'type', 'dueDate'].forEach(k => {
+      if (fields[k] !== undefined) { sets.push(`${k} = ?`); vals.push(String(fields[k])); }
+    });
+    if (fields.isOpen !== undefined) { sets.push('isOpen = ?'); vals.push(fields.isOpen ? 1 : 0); }
+    if (!sets.length) return this.getAssignment(id);
+    vals.push(id);
+    db.prepare(`UPDATE assignments SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    return this.getAssignment(id);
+  },
+  deleteAssignment(id) {
+    const subs = db.prepare('SELECT fileUrl FROM submissions WHERE assignmentId = ?').all(id);
+    subs.forEach(s => {
+      if (s.fileUrl) {
+        try { fs.unlinkSync(path.join(SUBMISSIONS_DIR, path.basename(s.fileUrl))); } catch (e) {}
+      }
+    });
+    db.prepare('DELETE FROM submissions WHERE assignmentId = ?').run(id);
+    db.prepare('DELETE FROM assignments WHERE id = ?').run(id);
+  },
+
+  // ===== Submissions =====
+  getAllSubmissions(classroomId) {
+    return db.prepare('SELECT * FROM submissions WHERE classroomId = ? ORDER BY submittedAt DESC')
+      .all(classroomId).map(rowToSubmission);
+  },
+  getSubmissionsForAssignment(assignmentId) {
+    return db.prepare('SELECT * FROM submissions WHERE assignmentId = ? ORDER BY submittedAt DESC')
+      .all(assignmentId).map(rowToSubmission);
+  },
+  getSubmissionByStudent(assignmentId, studentId) {
+    return rowToSubmission(db.prepare('SELECT * FROM submissions WHERE assignmentId = ? AND studentId = ? ORDER BY submittedAt DESC LIMIT 1').get(assignmentId, studentId));
+  },
+  getSubmissionByGroup(assignmentId, groupNum) {
+    return rowToSubmission(db.prepare('SELECT * FROM submissions WHERE assignmentId = ? AND groupNum = ? ORDER BY submittedAt DESC LIMIT 1').get(assignmentId, groupNum));
+  },
+  upsertSubmission(s) {
+    let existing = null;
+    if (s.type === 'group' && s.groupNum) {
+      existing = db.prepare('SELECT id, fileUrl FROM submissions WHERE assignmentId = ? AND groupNum = ? AND classroomId = ?')
+        .get(s.assignmentId, s.groupNum, s.classroomId);
+    } else {
+      existing = db.prepare('SELECT id, fileUrl FROM submissions WHERE assignmentId = ? AND studentId = ? AND classroomId = ?')
+        .get(s.assignmentId, s.studentId, s.classroomId);
+    }
+    if (existing) {
+      // Delete old file if a new one is provided
+      if (s.fileUrl && existing.fileUrl && existing.fileUrl !== s.fileUrl) {
+        try { fs.unlinkSync(path.join(SUBMISSIONS_DIR, path.basename(existing.fileUrl))); } catch (e) {}
+      }
+      const sets = ['studentId = ?', 'submittedAt = ?', 'content = ?', 'link = ?'];
+      const vals = [s.studentId, s.submittedAt, s.content || '', s.link || ''];
+      if (s.fileUrl !== undefined) {
+        sets.push('fileUrl = ?', 'fileName = ?');
+        vals.push(s.fileUrl || '', s.fileName || '');
+      }
+      vals.push(existing.id);
+      db.prepare(`UPDATE submissions SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      return rowToSubmission(db.prepare('SELECT * FROM submissions WHERE id = ?').get(existing.id));
+    } else {
+      const r = db.prepare(`INSERT INTO submissions
+        (assignmentId, classroomId, studentId, groupNum, content, link, fileUrl, fileName, submittedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        s.assignmentId, s.classroomId, s.studentId, s.groupNum || '',
+        s.content || '', s.link || '', s.fileUrl || '', s.fileName || '', s.submittedAt
+      );
+      return rowToSubmission(db.prepare('SELECT * FROM submissions WHERE id = ?').get(r.lastInsertRowid));
+    }
   }
 };

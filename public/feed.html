@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ห้องเรียน</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body class="feed-body">
+  <div class="container wide">
+    <div class="feed-top">
+      <div>
+        <a href="/" class="hint" style="text-decoration:none;">← ห้องเรียนทั้งหมด</a>
+        <h1 id="cTitle" style="margin-top:6px;">-</h1>
+        <p class="subtitle" id="cSub">-</p>
+      </div>
+      <button class="secondary" id="logoutBtn">ออกจากระบบ</button>
+    </div>
+
+    <div class="my-profile-card card">
+      <div class="my-photo">
+        <img id="myPhoto" alt="" />
+      </div>
+      <div class="my-info">
+        <div class="my-greet">สวัสดี <b id="myName">-</b> <span id="myNick" style="color:#888;"></span></div>
+        <div class="my-meta">
+          <span><b>รหัส:</b> <span id="myId">-</span></span>
+          <span id="myGroupBadge" class="badge-group">-</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="myGroupSection">
+      <h2 id="myGroupTitle">เพื่อนในกลุ่ม</h2>
+      <div class="my-group-grid" id="myGroupGrid"></div>
+    </div>
+
+    <div class="activities">
+      <h2>เลือกกิจกรรม</h2>
+      <div class="activities-grid">
+        <a class="activity-card" id="actPeer">
+          <div class="act-icon">📝</div>
+          <div class="act-title">Peer Review</div>
+          <div class="act-desc">ประเมินคะแนนเพื่อน ๆ ในกลุ่ม</div>
+        </a>
+        <a class="activity-card" id="actAssign">
+          <div class="act-icon">📚</div>
+          <div class="act-title">ส่งงาน</div>
+          <div class="act-desc">ดูและส่งงานที่ได้รับมอบหมาย</div>
+          <div class="act-badge" id="assignCount" style="display:none;"></div>
+        </a>
+        <a class="activity-card" id="actDash" target="_blank">
+          <div class="act-icon">📊</div>
+          <div class="act-title">Dashboard</div>
+          <div class="act-desc">ดูภาพรวมของห้อง</div>
+        </a>
+      </div>
+    </div>
+
+    <div id="otherGroupsSection">
+      <h2>กลุ่มอื่น ๆ ในห้อง</h2>
+      <div class="other-groups-grid" id="otherGroupsGrid"></div>
+    </div>
+  </div>
+
+  <script>
+    const cid = window.location.pathname.split('/')[2];
+    const userKey = `pr_user_${cid}`;
+    const user = JSON.parse(localStorage.getItem(userKey) || 'null');
+    if (!user) window.location.href = `/c/${cid}`;
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    document.getElementById('logoutBtn').onclick = () => {
+      localStorage.removeItem(userKey);
+      window.location.href = `/c/${cid}`;
+    };
+
+    document.getElementById('actPeer').href = `/c/${cid}/vote`;
+    document.getElementById('actAssign').href = `/c/${cid}/assignments`;
+    document.getElementById('actDash').href = `/c/${cid}/dashboard`;
+
+    async function load() {
+      try {
+        const res = await fetch(`/api/c/${cid}/feed/${encodeURIComponent(user.studentId)}`);
+        if (res.status === 404) {
+          localStorage.removeItem(userKey);
+          window.location.href = `/c/${cid}`;
+          return;
+        }
+        const data = await res.json();
+        const c = data.classroom;
+        document.getElementById('cTitle').textContent = `${c.code} — ${c.name}`;
+        document.getElementById('cSub').textContent = c.university || '';
+
+        const me = data.me;
+        const fullName = `${me.firstName || ''} ${me.lastName || ''}`.trim() || me.name || me.studentId;
+        document.getElementById('myName').textContent = fullName;
+        document.getElementById('myNick').textContent = me.nickname ? `(${me.nickname})` : '';
+        document.getElementById('myId').textContent = me.studentId;
+        const photo = document.getElementById('myPhoto');
+        if (me.selfie) {
+          photo.src = me.selfie;
+          photo.style.display = '';
+        } else {
+          photo.style.display = 'none';
+          photo.parentElement.innerHTML = '<div class="no-photo big">?</div>';
+        }
+        const grpEl = document.getElementById('myGroupBadge');
+        grpEl.textContent = me.group ? `กลุ่ม ${me.group}` : 'ยังไม่มีกลุ่ม';
+        if (!me.group) grpEl.classList.add('no-group');
+
+        // Update local user from server (so vote page reads fresh group)
+        if (me.firstName !== user.firstName || me.lastName !== user.lastName ||
+            me.nickname !== user.nickname || me.group !== user.group ||
+            me.selfie !== user.selfie) {
+          Object.assign(user, me);
+          localStorage.setItem(userKey, JSON.stringify(user));
+        }
+
+        // My group members
+        const grp = data.myGroup;
+        const gridEl = document.getElementById('myGroupGrid');
+        const titleEl = document.getElementById('myGroupTitle');
+        if (grp && data.grouped[grp]) {
+          titleEl.textContent = `เพื่อนในกลุ่ม ${grp}`;
+          gridEl.innerHTML = data.grouped[grp].map(m => renderMember(m, false)).join('');
+        } else {
+          titleEl.textContent = 'ยังไม่มีกลุ่ม';
+          gridEl.innerHTML = '<div class="empty-state" style="padding:14px;">รอผู้สอนกำหนดกลุ่มให้ก่อน</div>';
+        }
+
+        // Other groups
+        const others = data.groups.filter(g => g !== grp);
+        document.getElementById('otherGroupsGrid').innerHTML = others.map(g => {
+          const members = data.grouped[g] || [];
+          return `
+            <div class="other-group-block">
+              <div class="og-header">กลุ่ม ${escapeHtml(g)} <span class="og-count">${members.length}</span></div>
+              <div class="og-members">
+                ${members.length === 0
+                  ? '<div class="hint" style="font-size:11px;">ยังไม่มีคน</div>'
+                  : members.map(m => renderMember(m, true)).join('')}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Assignment badge
+        if (data.assignmentCount > 0) {
+          const ac = document.getElementById('assignCount');
+          ac.textContent = `${data.assignmentCount} งาน`;
+          ac.style.display = '';
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function renderMember(m, small) {
+      const cls = ['member-pill', small ? 'small' : ''];
+      if (m.isMe) cls.push('me');
+      const photo = m.selfie
+        ? `<img src="${escapeHtml(m.selfie)}" alt="" />`
+        : `<div class="no-photo">?</div>`;
+      return `
+        <div class="${cls.join(' ')}" title="${escapeHtml(m.studentId)} ${escapeHtml(m.fullName || m.name)}">
+          <div class="mp-photo">${photo}</div>
+          ${!small ? `<div class="mp-name">${escapeHtml(m.name)}</div>` : ''}
+        </div>
+      `;
+    }
+
+    load();
+    setInterval(load, 15000);
+  </script>
+</body>
+</html>

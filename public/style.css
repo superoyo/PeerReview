@@ -469,6 +469,266 @@ table tbody tr:hover { background: #f9faff; }
 }
 .group-select:focus { outline: none; border-color: #667eea; }
 
+/* Top nav (homepage) */
+.top-nav {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  z-index: 50;
+}
+.login-btn {
+  display: inline-block;
+  background: #fff;
+  color: #4555a6;
+  padding: 10px 18px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+  transition: all 0.15s;
+}
+.login-btn:hover {
+  background: #4555a6;
+  color: #fff;
+}
+
+/* Feed page */
+.feed-body { background: linear-gradient(135deg, #f5f7ff 0%, #eef0ff 100%); }
+.feed-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.my-profile-card {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 18px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  border: none;
+}
+.my-photo {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #fff;
+  flex-shrink: 0;
+  border: 3px solid #fff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+.my-photo img { width: 100%; height: 100%; object-fit: cover; }
+.my-photo .no-photo.big {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  background: #f0f0f0; color: #aac; font-size: 36px; font-weight: 700;
+}
+.my-info { flex: 1; min-width: 0; }
+.my-greet { font-size: 18px; }
+.my-greet b { font-size: 22px; }
+.my-meta { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 14px; }
+
+.badge-group {
+  background: rgba(255,255,255,0.25);
+  padding: 4px 14px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+.badge-group.no-group { background: rgba(255,200,0,0.4); }
+
+.my-group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+.member-pill {
+  background: #fff;
+  border-radius: 12px;
+  padding: 8px 6px;
+  text-align: center;
+  border: 1.5px solid #e6eaf2;
+}
+.member-pill.me {
+  border-color: #667eea;
+  background: #eef0ff;
+}
+.mp-photo {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #eef;
+}
+.mp-photo img { width: 100%; height: 100%; object-fit: cover; }
+.mp-photo .no-photo {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  color: #aac; font-weight: 700;
+}
+.mp-name {
+  font-size: 13px;
+  margin-top: 6px;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.member-pill.small {
+  padding: 3px;
+  background: transparent;
+  border: none;
+}
+.member-pill.small .mp-photo { width: 38px; height: 38px; }
+
+/* Activities */
+.activities { margin: 24px 0; }
+.activities-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.activity-card {
+  display: block;
+  background: #fff;
+  border: 2px solid #e6eaf2;
+  border-radius: 14px;
+  padding: 22px;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.2s;
+  text-align: center;
+  position: relative;
+}
+.activity-card:hover {
+  border-color: #667eea;
+  transform: translateY(-3px);
+  box-shadow: 0 12px 24px rgba(102,126,234,0.2);
+}
+.act-icon { font-size: 38px; margin-bottom: 8px; }
+.act-title { font-size: 18px; font-weight: 600; color: #222; }
+.act-desc { font-size: 13px; color: #777; margin-top: 4px; }
+.act-badge {
+  position: absolute;
+  top: 10px; right: 10px;
+  background: #e74c3c;
+  color: #fff;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Other groups */
+.other-groups-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.other-group-block {
+  background: #fff;
+  border: 1px solid #e6eaf2;
+  border-radius: 10px;
+  padding: 10px;
+}
+.og-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: #444;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.og-count {
+  background: #667eea;
+  color: #fff;
+  padding: 1px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+.og-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Assignment cards */
+.assignment-card { padding: 14px 18px; }
+.ac-head { margin-bottom: 6px; }
+.ac-title { font-size: 16px; font-weight: 600; color: #222; }
+.ac-meta { color: #777; font-size: 12px; margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ac-desc { color: #555; font-size: 14px; margin: 8px 0; }
+.ac-current {
+  background: #f5f7fc;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 10px 0;
+  font-size: 13px;
+}
+.ac-text { white-space: pre-wrap; color: #333; margin: 4px 0; }
+.ac-form-details {
+  margin-top: 8px;
+  border-top: 1px solid #e6eaf2;
+  padding-top: 10px;
+}
+.ac-form-details summary {
+  cursor: pointer;
+  color: #667eea;
+  font-weight: 500;
+  font-size: 14px;
+}
+.ac-form textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1.5px solid #d8dde6;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+.ac-form input[type="file"] { font-family: inherit; padding: 6px 0; }
+.ac-form button[type="submit"] { margin-top: 12px; }
+
+.tag-individual,
+.tag-group {
+  display: inline-block;
+  padding: 1px 8px;
+  margin-left: 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.tag-individual { background: #e8f4ff; color: #2766b8; }
+.tag-group { background: #fff0e8; color: #b86527; }
+
+.badge-success {
+  display: inline-block;
+  background: #e8f6ec;
+  color: #1e7e3a;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-pending {
+  display: inline-block;
+  background: #f0f1f5;
+  color: #888;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .date-list {
   display: flex;
   flex-wrap: wrap;

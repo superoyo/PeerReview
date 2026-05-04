@@ -8,7 +8,8 @@
 </head>
 <body>
   <div class="container">
-    <h1>หน้าให้คะแนนเพื่อนในกลุ่ม</h1>
+    <a href="" id="backLink" class="hint" style="text-decoration:none;">← กลับหน้าห้องเรียน</a>
+    <h1 style="margin-top:6px;">หน้าให้คะแนนเพื่อนในกลุ่ม</h1>
     <div id="userInfo" class="user-info">กำลังโหลด...</div>
     <div id="content"></div>
     <div id="message"></div>
@@ -22,6 +23,8 @@
     const userKey = `pr_user_${cid}`;
     const user = JSON.parse(localStorage.getItem(userKey) || 'null');
     if (!user) window.location.href = `/c/${cid}`;
+
+    document.getElementById('backLink').href = `/c/${cid}/feed`;
 
     const userInfoEl = document.getElementById('userInfo');
     const contentEl = document.getElementById('content');

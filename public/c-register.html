@@ -68,7 +68,7 @@
     const saved = localStorage.getItem(userKey);
     if (saved) {
       const u = JSON.parse(saved);
-      window.location.href = u.selfie ? `/c/${cid}/vote` : `/c/${cid}/selfie`;
+      window.location.href = u.selfie ? `/c/${cid}/feed` : `/c/${cid}/selfie`;
     }
 
     async function loadClassroom() {
@@ -147,8 +147,8 @@
         }
         localStorage.setItem(userKey, JSON.stringify(data.user));
         msg.innerHTML = `<div class="message success">${escapeHtml(data.message)}</div>`;
-        const next = data.user.selfie ? `/c/${cid}/vote` : `/c/${cid}/selfie`;
-        setTimeout(() => { window.location.href = next; }, 600);
+        const next = data.user.selfie ? `/c/${cid}/feed` : `/c/${cid}/selfie`;
+        setTimeout(() => { window.location.href = next; }, 800);
       } catch (err) {
         msg.innerHTML = `<div class="message error">เกิดข้อผิดพลาด: ${escapeHtml(err.message)}</div>`;
       }

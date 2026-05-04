@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ส่งงาน</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="container">
+    <a href="" id="backLink" class="hint" style="text-decoration:none;">← กลับหน้าห้องเรียน</a>
+    <h1 style="margin-top:6px;">📚 งานที่ได้รับมอบหมาย</h1>
+    <div id="userInfo" class="user-info" style="margin-top: 14px;">-</div>
+
+    <div id="list">
+      <p class="hint">กำลังโหลด...</p>
+    </div>
+  </div>
+
+  <script>
+    const cid = window.location.pathname.split('/')[2];
+    const userKey = `pr_user_${cid}`;
+    const user = JSON.parse(localStorage.getItem(userKey) || 'null');
+    if (!user) window.location.href = `/c/${cid}`;
+    document.getElementById('backLink').href = `/c/${cid}/feed`;
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+    function fullName() {
+      return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.name || user.studentId;
+    }
+    function fmtDate(s) {
+      if (!s) return '';
+      const d = new Date(s);
+      return isNaN(d) ? s : d.toLocaleString('th-TH', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
+    document.getElementById('userInfo').innerHTML = `
+      <b>${escapeHtml(fullName())}</b>
+      ${user.nickname ? `(${escapeHtml(user.nickname)})` : ''}
+      &nbsp;|&nbsp; <b>รหัส:</b> ${escapeHtml(user.studentId)}
+      ${user.group ? ` &nbsp;|&nbsp; <b>กลุ่ม:</b> ${escapeHtml(user.group)}` : ''}
+    `;
+
+    async function load() {
+      const res = await fetch(`/api/c/${cid}/assignments`);
+      const data = await res.json();
+      const list = data.assignments || [];
+      const el = document.getElementById('list');
+      if (list.length === 0) {
+        el.innerHTML = `<div class="empty-state">ยังไม่มีงานในขณะนี้</div>`;
+        return;
+      }
+      // For each assignment, fetch the user's submission
+      const cards = await Promise.all(list.map(async a => {
+        const r = await fetch(`/api/c/${cid}/assignments/${a.id}/submission/${encodeURIComponent(user.studentId)}`);
+        const d = await r.json();
+        return renderAssignment(d.assignment, d.submission, d.submitter);
+      }));
+      el.innerHTML = cards.join('');
+      list.forEach(a => bindForm(a.id));
+    }
+
+    function renderAssignment(a, sub, submitter) {
+      const typeBadge = a.type === 'group'
+        ? '<span class="tag-group">งานกลุ่ม</span>'
+        : '<span class="tag-individual">งานเดี่ยว</span>';
+      const status = sub
+        ? `<span class="badge-success">✓ ส่งแล้ว ${fmtDate(sub.submittedAt)}${a.type === 'group' && submitter ? ` (โดย ${escapeHtml(submitter)})` : ''}</span>`
+        : `<span class="badge-pending">ยังไม่ได้ส่ง</span>`;
+      const dueLabel = a.dueDate ? `กำหนดส่ง: <b>${fmtDate(a.dueDate)}</b>` : '';
+      const closed = !a.isOpen;
+      const fileLink = sub && sub.fileUrl ? `<a href="${escapeHtml(sub.fileUrl)}" target="_blank">📎 ${escapeHtml(sub.fileName || 'ไฟล์ที่แนบ')}</a>` : '';
+      const linkLink = sub && sub.link ? `<a href="${escapeHtml(sub.link)}" target="_blank">🔗 ${escapeHtml(sub.link)}</a>` : '';
+      return `
+        <div class="card assignment-card" data-id="${a.id}">
+          <div class="ac-head">
+            <div>
+              <div class="ac-title">${escapeHtml(a.title)} ${typeBadge}</div>
+              <div class="ac-meta">${dueLabel} ${status}${closed ? ' · <span style="color:#c33;">ปิดรับส่ง</span>' : ''}</div>
+            </div>
+          </div>
+          ${a.description ? `<div class="ac-desc">${escapeHtml(a.description)}</div>` : ''}
+          ${sub ? `
+            <div class="ac-current">
+              <div class="hint">งานที่ส่ง:</div>
+              ${sub.content ? `<div class="ac-text">${escapeHtml(sub.content)}</div>` : ''}
+              ${linkLink ? `<div>${linkLink}</div>` : ''}
+              ${fileLink ? `<div>${fileLink}</div>` : ''}
+            </div>
+          ` : ''}
+          ${closed ? '' : `
+            <details class="ac-form-details" ${sub ? '' : 'open'}>
+              <summary>${sub ? 'ส่งใหม่ / แก้ไขงาน' : 'ส่งงาน'}</summary>
+              <form class="ac-form" data-aid="${a.id}">
+                <label>ข้อความ / คำอธิบาย</label>
+                <textarea name="content" rows="3" placeholder="เนื้อหา / คำอธิบาย"></textarea>
+                <label>ลิงก์ (Google Drive, GitHub, ฯลฯ)</label>
+                <input type="url" name="link" placeholder="https://..." />
+                <label>แนบไฟล์ (ไม่เกิน 10 MB)</label>
+                <input type="file" name="file" />
+                <button type="submit" class="primary">ส่งงาน</button>
+                <div class="ac-msg"></div>
+              </form>
+            </details>
+          `}
+        </div>
+      `;
+    }
+
+    function bindForm(aid) {
+      const form = document.querySelector(`form.ac-form[data-aid="${aid}"]`);
+      if (!form) return;
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const msgEl = form.querySelector('.ac-msg');
+        msgEl.innerHTML = '';
+        const fd = new FormData(form);
+        const file = fd.get('file');
+        let fileData = null, fileName = null;
+        if (file && file.size > 0) {
+          if (file.size > 10 * 1024 * 1024) {
+            msgEl.innerHTML = '<div class="message error">ไฟล์ใหญ่เกิน 10 MB</div>';
+            return;
+          }
+          fileName = file.name;
+          fileData = await new Promise((res, rej) => {
+            const r = new FileReader();
+            r.onload = () => res(r.result);
+            r.onerror = rej;
+            r.readAsDataURL(file);
+          });
+        }
+        const payload = {
+          studentId: user.studentId,
+          content: fd.get('content') || '',
+          link: fd.get('link') || '',
+          fileData, fileName
+        };
+        msgEl.innerHTML = '<div class="message info">กำลังส่ง...</div>';
+        try {
+          const res = await fetch(`/api/c/${cid}/assignments/${aid}/submit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            msgEl.innerHTML = `<div class="message error">${escapeHtml(data.error)}</div>`;
+            return;
+          }
+          msgEl.innerHTML = '<div class="message success">ส่งสำเร็จ</div>';
+          setTimeout(() => load(), 600);
+        } catch (e) {
+          msgEl.innerHTML = `<div class="message error">${escapeHtml(e.message)}</div>`;
+        }
+      };
+    }
+
+    load();
+  </script>
+</body>
+</html>

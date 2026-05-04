@@ -141,8 +141,8 @@
         }
         user.selfie = data.url;
         localStorage.setItem(userKey, JSON.stringify(user));
-        statusEl.innerHTML = `<div class="message success">อัปโหลดสำเร็จ กำลังเข้าสู่หน้าโหวต...</div>`;
-        setTimeout(() => { window.location.href = `/c/${cid}/vote`; }, 700);
+        statusEl.innerHTML = `<div class="message success">อัปโหลดสำเร็จ กำลังเข้าสู่ห้องเรียน...</div>`;
+        setTimeout(() => { window.location.href = `/c/${cid}/feed`; }, 700);
       } catch (e) {
         statusEl.innerHTML = `<div class="message error">${escapeHtml(e.message)}</div>`;
         confirmBtn.disabled = false; retakeBtn.disabled = false;
