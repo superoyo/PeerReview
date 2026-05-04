@@ -149,11 +149,13 @@ app.post('/api/c/:cid/register', loadClassroom, (req, res) => {
   if (c.peerReviewEnabled) {
     const mode = c.groupAssignmentMode || 'self';
     if (mode === 'self') {
-      if (!grpStr) return res.status(400).json({ error: 'กรุณาเลือกกลุ่ม' });
-      if (!c.validGroups.includes(grpStr)) {
-        return res.status(400).json({ error: `กลุ่มต้องเป็น ${c.validGroups.join(', ')}` });
+      // Allow empty group — student can set later via Profile
+      if (grpStr) {
+        if (!c.validGroups.includes(grpStr)) {
+          return res.status(400).json({ error: `กลุ่มต้องเป็น ${c.validGroups.join(', ')}` });
+        }
+        assignedGroup = grpStr;
       }
-      assignedGroup = grpStr;
     } else if (mode === 'random') {
       assignedGroup = pickBalancedGroup(c.id, c.validGroups);
     } else if (mode === 'admin') {

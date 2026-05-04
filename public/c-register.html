@@ -48,7 +48,10 @@
       </div>
       <div id="groupNote" class="hint" style="display:none; margin-top: 6px;"></div>
 
-      <button type="submit" class="primary">ถัดไป</button>
+      <div style="display: flex; gap: 10px; margin-top: 8px;">
+        <button type="button" class="secondary" id="skipProfileBtn" style="flex: 1; margin: 0;">ข้าม</button>
+        <button type="submit" class="primary" style="flex: 2; margin: 0;">ถัดไป</button>
+      </div>
     </form>
 
     <!-- Step 3: Enroll code -->
@@ -178,13 +181,27 @@
       msg.innerHTML = '';
       const mode = classroom && classroom.groupAssignmentMode || 'self';
       if (classroom && classroom.peerReviewEnabled && mode === 'self' && !groupInput.value) {
-        msg.innerHTML = `<div class="message error">กรุณาเลือกกลุ่ม</div>`;
+        msg.innerHTML = `<div class="message error">กรุณาเลือกกลุ่ม (หรือกด "ข้าม" เพื่อให้ผู้สอนกำหนดทีหลัง)</div>`;
         return;
       }
       profileForm.style.display = 'none';
       codeForm.style.display = '';
       document.getElementById('enrollCode').focus();
     });
+
+    document.getElementById('skipProfileBtn').onclick = () => {
+      msg.innerHTML = '';
+      // Clear all optional fields
+      document.getElementById('studentId').value = '';
+      document.getElementById('firstName').value = '';
+      document.getElementById('lastName').value = '';
+      document.getElementById('nickname').value = '';
+      groupInput.value = '';
+      groupButtons.querySelectorAll('.group-btn').forEach(b => b.classList.remove('selected'));
+      profileForm.style.display = 'none';
+      codeForm.style.display = '';
+      document.getElementById('enrollCode').focus();
+    };
 
     codeForm.addEventListener('submit', async (e) => {
       e.preventDefault();
