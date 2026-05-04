@@ -78,11 +78,24 @@
       <button class="tab active" data-tab="users">รายชื่อผู้ลงทะเบียน</button>
       <button class="tab" data-tab="scores">คะแนนรวม (Mode)</button>
       <button class="tab" data-tab="assignments">งานที่มอบหมาย</button>
+      <button class="tab" data-tab="schedule">ตารางเรียน</button>
     </div>
 
     <div id="usersTab" class="tab-content"></div>
     <div id="scoresTab" class="tab-content" style="display: none;"></div>
     <div id="assignmentsTab" class="tab-content" style="display: none;"></div>
+    <div id="scheduleTab" class="tab-content" style="display: none;">
+      <div class="sched-header">
+        <button class="secondary" id="prevMonthBtn">◀</button>
+        <h2 id="monthLabel" style="margin: 0; min-width: 220px; text-align: center;">-</h2>
+        <button class="secondary" id="nextMonthBtn">▶</button>
+        <button class="primary" id="todayBtn" style="margin-left: 8px;">วันนี้</button>
+      </div>
+      <p class="hint" style="text-align: center;">คลิกที่วันใดก็ได้เพื่อเพิ่ม / แก้ไขรายละเอียดวันเรียน</p>
+      <div class="cal-grid" id="calGrid"></div>
+      <h2 style="margin-top: 22px;">รายการวันเรียนทั้งหมด</h2>
+      <div id="schedList"></div>
+    </div>
   </div>
 
   <div id="modalRoot"></div>
@@ -402,9 +415,214 @@
         document.getElementById('usersTab').style.display = t.dataset.tab === 'users' ? '' : 'none';
         document.getElementById('scoresTab').style.display = t.dataset.tab === 'scores' ? '' : 'none';
         document.getElementById('assignmentsTab').style.display = t.dataset.tab === 'assignments' ? '' : 'none';
+        document.getElementById('scheduleTab').style.display = t.dataset.tab === 'schedule' ? '' : 'none';
         if (t.dataset.tab === 'assignments') loadAssignmentsAdmin();
+        if (t.dataset.tab === 'schedule') loadSchedule();
       };
     });
+
+    // ==================== Schedule (class dates with details) ====================
+
+    let schedClassroom = null;
+    let schedMonth = null;
+
+    function pad2(n) { return String(n).padStart(2, '0'); }
+    function dateIdToTH(id) {
+      try {
+        const d = new Date(id + 'T00:00:00');
+        return d.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      } catch (e) { return id; }
+    }
+    function dateIdToLabel(id) {
+      try {
+        const d = new Date(id + 'T00:00:00');
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      } catch (e) { return id; }
+    }
+
+    async function loadSchedule() {
+      const res = await authFetch('/api/admin/classrooms');
+      if (res.status === 401) { logout(); return; }
+      const { classrooms } = await res.json();
+      schedClassroom = classrooms.find(x => x.id === cid);
+      if (!schedClassroom) return;
+      if (!schedMonth) {
+        const dates = (schedClassroom.classDates || []).map(d => d.id).sort();
+        const first = dates[0] || new Date().toISOString().slice(0, 10);
+        const [y, m] = first.split('-').map(Number);
+        schedMonth = { year: y, month: m - 1 };
+      }
+      renderCalendar();
+      renderScheduleList();
+    }
+
+    function renderCalendar() {
+      const dates = schedClassroom.classDates || [];
+      const dateMap = Object.fromEntries(dates.map(d => [d.id, d]));
+      const { year, month } = schedMonth;
+      const first = new Date(year, month, 1);
+      const startDow = first.getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      document.getElementById('monthLabel').textContent =
+        first.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+
+      const grid = document.getElementById('calGrid');
+      let html = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
+        .map(d => `<div class="cal-dow">${d}</div>`).join('');
+
+      for (let i = 0; i < startDow; i++) html += '<div class="cal-cell empty"></div>';
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+      for (let d = 1; d <= daysInMonth; d++) {
+        const id = `${year}-${pad2(month + 1)}-${pad2(d)}`;
+        const cd = dateMap[id];
+        const cls = ['cal-cell'];
+        if (cd) cls.push('class-day');
+        if (id === todayStr) cls.push('today');
+        const preview = cd && cd.content ? `<div class="cal-content">${escapeHtml(cd.content.slice(0, 30))}</div>` : '';
+        const time = cd && (cd.startTime || cd.endTime)
+          ? `<div class="cal-time">⏰ ${escapeHtml(cd.startTime || '')}${cd.endTime ? '-' + escapeHtml(cd.endTime) : ''}</div>`
+          : '';
+        html += `<div class="${cls.join(' ')}" data-id="${id}">
+          <div class="cal-num">${d}</div>
+          ${preview}${time}
+        </div>`;
+      }
+
+      grid.innerHTML = html;
+      grid.querySelectorAll('.cal-cell:not(.empty)').forEach(cell => {
+        cell.onclick = () => openDateEditor(cell.dataset.id);
+      });
+    }
+
+    function renderScheduleList() {
+      const dates = (schedClassroom.classDates || []).slice().sort((a, b) => a.id.localeCompare(b.id));
+      const el = document.getElementById('schedList');
+      if (dates.length === 0) {
+        el.innerHTML = `<div class="empty-state">ยังไม่มีวันเรียน — คลิกบนปฏิทินเพื่อเพิ่ม</div>`;
+        return;
+      }
+      el.innerHTML = dates.map(d => `
+        <div class="card sched-item" data-id="${escapeHtml(d.id)}">
+          <div class="si-date">${escapeHtml(dateIdToTH(d.id))}</div>
+          <div class="si-body">
+            ${d.content ? `<div><b>เนื้อหา:</b> ${escapeHtml(d.content)}</div>` : ''}
+            ${(d.startTime || d.endTime) ? `<div><b>เวลา:</b> ${escapeHtml(d.startTime || '')}${d.endTime ? ' - ' + escapeHtml(d.endTime) : ''}</div>` : ''}
+            ${d.instructor ? `<div><b>วิทยากร:</b> ${escapeHtml(d.instructor)}</div>` : ''}
+            ${(!d.content && !d.startTime && !d.endTime && !d.instructor) ? '<span class="hint">ยังไม่ระบุรายละเอียด</span>' : ''}
+          </div>
+          <div style="display:flex; gap:6px; flex-wrap: wrap;">
+            <button class="secondary" data-edit="${escapeHtml(d.id)}">แก้ไข</button>
+            <button class="danger" data-del="${escapeHtml(d.id)}">ลบ</button>
+          </div>
+        </div>
+      `).join('');
+      el.querySelectorAll('button[data-edit]').forEach(b => b.onclick = () => openDateEditor(b.dataset.edit));
+      el.querySelectorAll('button[data-del]').forEach(b => b.onclick = () => deleteClassDate(b.dataset.del));
+    }
+
+    function openDateEditor(dateId) {
+      const dates = schedClassroom.classDates || [];
+      const cd = dates.find(d => d.id === dateId) || { id: dateId };
+      const isExisting = !!dates.find(d => d.id === dateId);
+      const root = document.getElementById('modalRoot');
+      root.innerHTML = `
+        <div class="modal-backdrop" id="modalBg">
+          <div class="modal" onclick="event.stopPropagation()">
+            <button class="secondary modal-close" id="closeModal">ปิด</button>
+            <h3>${escapeHtml(dateIdToTH(dateId))}</h3>
+            <p class="hint">${isExisting ? 'แก้ไขรายละเอียดวันเรียนนี้' : 'เพิ่มเป็นวันเรียน + กรอกรายละเอียด'}</p>
+            <form id="dateForm">
+              <label>เนื้อหา / หัวข้อบรรยาย</label>
+              <textarea id="dContent" rows="3" placeholder="เช่น Introduction, การนำเสนอ Project, ฯลฯ">${escapeHtml(cd.content || '')}</textarea>
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                  <label>เวลาเริ่ม</label>
+                  <input type="time" id="dStart" value="${escapeHtml(cd.startTime || '')}" />
+                </div>
+                <div>
+                  <label>เวลาเลิก</label>
+                  <input type="time" id="dEnd" value="${escapeHtml(cd.endTime || '')}" />
+                </div>
+              </div>
+              <label>วิทยากร / ผู้สอน</label>
+              <input type="text" id="dInstr" placeholder="ชื่อวิทยากรประจำคาบ" value="${escapeHtml(cd.instructor || '')}" />
+              <div style="display:flex; gap:8px; margin-top:14px;">
+                <button type="submit" class="primary" style="flex:1; margin:0;">${isExisting ? 'บันทึก' : 'เพิ่มเป็นวันเรียน'}</button>
+                ${isExisting ? '<button type="button" class="danger" id="dDelBtn" style="margin:0;">ลบวันนี้ออก</button>' : ''}
+              </div>
+              <div id="dMsg"></div>
+            </form>
+          </div>
+        </div>
+      `;
+      const close = () => { root.innerHTML = ''; };
+      document.getElementById('closeModal').onclick = close;
+      document.getElementById('modalBg').onclick = (e) => { if (e.target.id === 'modalBg') close(); };
+      document.getElementById('dateForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const newCd = {
+          id: dateId,
+          label: dateIdToLabel(dateId),
+          content: document.getElementById('dContent').value.trim(),
+          startTime: document.getElementById('dStart').value,
+          endTime: document.getElementById('dEnd').value,
+          instructor: document.getElementById('dInstr').value.trim()
+        };
+        const updated = (schedClassroom.classDates || []).filter(d => d.id !== dateId);
+        updated.push(newCd);
+        updated.sort((a, b) => a.id.localeCompare(b.id));
+        const ok = await saveClassDates(updated);
+        if (ok) close();
+      };
+      const delBtn = document.getElementById('dDelBtn');
+      if (delBtn) {
+        delBtn.onclick = async () => {
+          if (!confirm(`ลบวันเรียน ${dateIdToTH(dateId)} ออก?`)) return;
+          const updated = (schedClassroom.classDates || []).filter(d => d.id !== dateId);
+          const ok = await saveClassDates(updated);
+          if (ok) close();
+        };
+      }
+    }
+
+    async function saveClassDates(newDates) {
+      const r = await authFetch(`/api/admin/classrooms/${cid}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ classDates: newDates })
+      });
+      if (!r.ok) {
+        alert('บันทึกไม่สำเร็จ');
+        return false;
+      }
+      await loadSchedule();
+      return true;
+    }
+
+    async function deleteClassDate(dateId) {
+      if (!confirm(`ลบวันเรียน ${dateIdToTH(dateId)} ออก?`)) return;
+      const updated = (schedClassroom.classDates || []).filter(d => d.id !== dateId);
+      await saveClassDates(updated);
+    }
+
+    document.getElementById('prevMonthBtn').onclick = () => {
+      if (!schedMonth) return;
+      schedMonth.month--;
+      if (schedMonth.month < 0) { schedMonth.month = 11; schedMonth.year--; }
+      renderCalendar();
+    };
+    document.getElementById('nextMonthBtn').onclick = () => {
+      if (!schedMonth) return;
+      schedMonth.month++;
+      if (schedMonth.month > 11) { schedMonth.month = 0; schedMonth.year++; }
+      renderCalendar();
+    };
+    document.getElementById('todayBtn').onclick = () => {
+      const t = new Date();
+      schedMonth = { year: t.getFullYear(), month: t.getMonth() };
+      renderCalendar();
+    };
 
     async function loadAssignmentsAdmin() {
       const res = await authFetch(`/api/c/${cid}/admin/assignments`);

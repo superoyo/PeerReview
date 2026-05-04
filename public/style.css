@@ -468,6 +468,90 @@ table tbody tr:hover { background: #f9faff; }
   color: #aaa;
   font-weight: normal;
 }
+
+/* Calendar (admin schedule tab) */
+.sched-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.sched-header h2 { font-size: 18px; }
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 18px;
+}
+.cal-dow {
+  text-align: center;
+  font-weight: 600;
+  font-size: 12px;
+  color: #888;
+  padding: 8px 0;
+  background: #f7f8fc;
+  border-radius: 4px;
+}
+.cal-cell {
+  background: #fafbfd;
+  padding: 8px 6px;
+  min-height: 78px;
+  border-radius: 6px;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: #444;
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cal-cell.empty { background: transparent; cursor: default; min-height: 0; }
+.cal-cell:hover:not(.empty) {
+  border-color: #667eea;
+  background: #f0f3ff;
+}
+.cal-cell.today { box-shadow: inset 0 0 0 2px #ffe082; }
+.cal-cell.class-day {
+  background: #eef0ff;
+  border-color: #c5cdf5;
+}
+.cal-cell.class-day .cal-num {
+  font-weight: 700;
+  color: #4555a6;
+}
+.cal-num { font-size: 14px; }
+.cal-content {
+  font-size: 11px;
+  color: #4555a6;
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.cal-time {
+  font-size: 10px;
+  color: #888;
+  margin-top: auto;
+}
+
+.sched-item {
+  display: grid;
+  grid-template-columns: 220px 1fr auto;
+  gap: 14px;
+  align-items: flex-start;
+}
+.si-date { font-weight: 600; color: #4555a6; font-size: 14px; }
+.si-body { font-size: 14px; color: #555; line-height: 1.7; }
+.si-body div { margin-bottom: 2px; }
+@media (max-width: 700px) {
+  .sched-item { grid-template-columns: 1fr; gap: 8px; }
+  .cal-cell { min-height: 50px; padding: 4px; font-size: 11px; }
+  .cal-content, .cal-time { display: none; }
+}
 .cr-actions {
   display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start;
 }
