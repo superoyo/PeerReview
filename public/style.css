@@ -48,7 +48,18 @@ label {
   font-weight: 500;
 }
 
-input[type="text"], input[type="password"], select {
+input[type="text"],
+input[type="password"],
+input[type="tel"],
+input[type="email"],
+input[type="number"],
+input[type="url"],
+input[type="search"],
+input[type="datetime-local"],
+input[type="date"],
+input[type="time"],
+select,
+textarea {
   width: 100%;
   padding: 12px 14px;
   border: 1.5px solid #d8dde6;
@@ -56,11 +67,29 @@ input[type="text"], input[type="password"], select {
   font-size: 15px;
   transition: border-color 0.15s;
   font-family: inherit;
+  background: #fff;
 }
 
-input:focus, select:focus {
+input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: #667eea;
+}
+
+/* Phone input — bigger, clearer numbers */
+input[type="tel"] {
+  font-size: 24px;
+  padding: 16px 18px;
+  letter-spacing: 3px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  font-family: -apple-system, "SF Mono", "Menlo", "Sukhumvit Set", monospace;
+  text-align: center;
+}
+input[type="tel"]::placeholder {
+  font-weight: 400;
+  letter-spacing: 2px;
+  color: #bbb;
 }
 
 button {
