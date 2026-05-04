@@ -14,11 +14,29 @@ console.log(`Data directory: ${db.DATA_DIR}`);
 console.log(`Uploads directory: ${db.UPLOADS_DIR}`);
 
 app.use(express.json({ limit: '12mb' }));
+
+// Disable HTML caching so users always get latest pages
+app.use((req, res, next) => {
+  if (req.method === 'GET' && (req.path === '/' || req.path === '/admin' ||
+      req.path.startsWith('/c/') || req.path.endsWith('.html'))) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
+
 app.use('/uploads', express.static(db.UPLOADS_DIR));
 
 // ===== Page routes (must come before express.static for path-based pages) =====
 function sendPage(file) {
-  return (req, res) => res.sendFile(path.join(__dirname, 'public', file));
+  return (req, res) => res.sendFile(path.join(__dirname, 'public', file), {
+    headers: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
+  });
 }
 
 app.get('/', sendPage('index.html'));
