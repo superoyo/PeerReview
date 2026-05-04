@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ลงทะเบียนเข้าห้องเรียน</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="container">
+    <div id="cInfo" class="user-info" style="margin-bottom: 18px;">กำลังโหลด...</div>
+
+    <h1>ลงทะเบียนเข้าห้องเรียน</h1>
+    <p class="subtitle">กรอกข้อมูลเพื่อเข้าสู่ระบบ</p>
+
+    <form id="registerForm">
+      <label for="studentId">รหัสนักศึกษา</label>
+      <input type="text" id="studentId" placeholder="เช่น 65010001" required />
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div>
+          <label for="firstName">ชื่อ</label>
+          <input type="text" id="firstName" placeholder="ชื่อ" required />
+        </div>
+        <div>
+          <label for="lastName">นามสกุล</label>
+          <input type="text" id="lastName" placeholder="นามสกุล" required />
+        </div>
+      </div>
+
+      <label for="nickname">ชื่อเล่น</label>
+      <input type="text" id="nickname" placeholder="ชื่อเล่น" />
+
+      <div id="groupSection" style="display:none;">
+        <label>เลือกกลุ่ม</label>
+        <div class="group-buttons" id="groupButtons"></div>
+        <input type="hidden" id="group" />
+      </div>
+
+      <button type="submit" class="primary">เข้าสู่ระบบ / ลงทะเบียน</button>
+    </form>
+
+    <div id="message"></div>
+
+    <p class="hint" style="margin-top: 24px; text-align: center;">
+      <a href="/" style="color: #888;">← กลับไปเลือกห้องเรียน</a>
+    </p>
+  </div>
+
+  <script>
+    const cid = window.location.pathname.split('/')[2];
+    const cInfo = document.getElementById('cInfo');
+    const form = document.getElementById('registerForm');
+    const msg = document.getElementById('message');
+    const groupSection = document.getElementById('groupSection');
+    const groupButtons = document.getElementById('groupButtons');
+    const groupInput = document.getElementById('group');
+    let classroom = null;
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    const userKey = `pr_user_${cid}`;
+    const saved = localStorage.getItem(userKey);
+    if (saved) {
+      const u = JSON.parse(saved);
+      window.location.href = u.selfie ? `/c/${cid}/vote` : `/c/${cid}/selfie`;
+    }
+
+    async function loadClassroom() {
+      try {
+        const res = await fetch(`/api/c/${cid}`);
+        if (!res.ok) {
+          cInfo.innerHTML = `<span style="color:#c33;">ไม่พบห้องเรียน "${escapeHtml(cid)}"</span>`;
+          form.style.display = 'none';
+          return;
+        }
+        const data = await res.json();
+        classroom = data.classroom;
+        cInfo.innerHTML = `
+          <b>${escapeHtml(classroom.code)}</b> — ${escapeHtml(classroom.name)}<br>
+          <span style="color:#888; font-size:13px;">${escapeHtml(classroom.university)}</span>
+          ${classroom.description ? `<div style="margin-top:6px; color:#666; font-size:13px;">${escapeHtml(classroom.description)}</div>` : ''}
+        `;
+        if (!classroom.registrationOpen) {
+          form.style.display = 'none';
+          msg.innerHTML = `<div class="message info">ห้องเรียนนี้ปิดรับลงทะเบียนแล้ว</div>`;
+          return;
+        }
+        if (classroom.peerReviewEnabled && classroom.validGroups && classroom.validGroups.length > 0) {
+          groupSection.style.display = '';
+          groupButtons.innerHTML = classroom.validGroups.map(g =>
+            `<button type="button" class="group-btn" data-group="${escapeHtml(g)}">กลุ่ม ${escapeHtml(g)}</button>`
+          ).join('');
+          groupButtons.querySelectorAll('.group-btn').forEach(btn => {
+            btn.onclick = () => {
+              groupButtons.querySelectorAll('.group-btn').forEach(b => b.classList.remove('selected'));
+              btn.classList.add('selected');
+              groupInput.value = btn.dataset.group;
+            };
+          });
+        }
+      } catch (e) {
+        cInfo.innerHTML = `<span style="color:#c33;">โหลดข้อมูลไม่ได้</span>`;
+      }
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.innerHTML = '';
+      if (classroom && classroom.peerReviewEnabled && !groupInput.value) {
+        msg.innerHTML = `<div class="message error">กรุณาเลือกกลุ่ม</div>`;
+        return;
+      }
+      const payload = {
+        studentId: document.getElementById('studentId').value.trim(),
+        firstName: document.getElementById('firstName').value.trim(),
+        lastName: document.getElementById('lastName').value.trim(),
+        nickname: document.getElementById('nickname').value.trim(),
+        group: groupInput.value || ''
+      };
+      try {
+        const res = await fetch(`/api/c/${cid}/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.innerHTML = `<div class="message error">${escapeHtml(data.error)}</div>`;
+          return;
+        }
+        localStorage.setItem(userKey, JSON.stringify(data.user));
+        msg.innerHTML = `<div class="message success">${escapeHtml(data.message)}</div>`;
+        const next = data.user.selfie ? `/c/${cid}/vote` : `/c/${cid}/selfie`;
+        setTimeout(() => { window.location.href = next; }, 600);
+      } catch (err) {
+        msg.innerHTML = `<div class="message error">เกิดข้อผิดพลาด: ${escapeHtml(err.message)}</div>`;
+      }
+    });
+
+    loadClassroom();
+  </script>
+</body>
+</html>

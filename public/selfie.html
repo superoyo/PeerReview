@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ถ่าย Selfie - Peer Review</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>ถ่าย Selfie</title>
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
   <div class="container">
     <h1>ถ่าย Selfie ก่อนเข้าระบบ</h1>
-    <p class="subtitle">กรุณาถ่ายภาพเซลฟี่เพื่อยืนยันตัวตน ก่อนเข้าหน้าโหวต</p>
+    <p class="subtitle">กรุณาถ่ายภาพเซลฟี่เพื่อยืนยันตัวตน</p>
 
     <div id="userInfo" class="user-info"></div>
 
@@ -35,13 +35,25 @@
   </div>
 
   <script>
-    const user = JSON.parse(localStorage.getItem('pr_user') || 'null');
-    if (!user) window.location.href = 'index.html';
+    const cid = window.location.pathname.split('/')[2];
+    const userKey = `pr_user_${cid}`;
+    const user = JSON.parse(localStorage.getItem(userKey) || 'null');
+    if (!user) window.location.href = `/c/${cid}`;
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+    function fullName() {
+      return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.name || user.studentId;
+    }
 
     document.getElementById('userInfo').innerHTML = `
-      <b>รหัส:</b> ${escapeHtml(user.studentId)} &nbsp;|&nbsp;
-      <b>ชื่อ:</b> ${escapeHtml(user.name)} &nbsp;|&nbsp;
-      <b>กลุ่ม:</b> ${escapeHtml(user.group)}
+      <b>${escapeHtml(fullName())}</b>
+      ${user.nickname ? `(${escapeHtml(user.nickname)})` : ''}
+      &nbsp;|&nbsp; <b>รหัส:</b> ${escapeHtml(user.studentId)}
+      ${user.group ? ` &nbsp;|&nbsp; <b>กลุ่ม:</b> ${escapeHtml(user.group)}` : ''}
     `;
 
     const video = document.getElementById('video');
@@ -58,8 +70,8 @@
 
     document.getElementById('logoutBtn').onclick = () => {
       stopCamera();
-      localStorage.removeItem('pr_user');
-      window.location.href = 'index.html';
+      localStorage.removeItem(userKey);
+      window.location.href = `/c/${cid}`;
     };
 
     async function startCamera() {
@@ -85,80 +97,59 @@
     }
 
     function stopCamera() {
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-        stream = null;
-      }
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
     }
 
     captureBtn.onclick = () => {
       if (!stream) { startCamera(); return; }
       const w = video.videoWidth, h = video.videoHeight;
-      canvas.width = w;
-      canvas.height = h;
+      canvas.width = w; canvas.height = h;
       const ctx = canvas.getContext('2d');
-      // Mirror the captured image to match the preview
       ctx.translate(w, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, w, h);
       capturedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
       preview.src = capturedDataUrl;
-      preview.hidden = false;
-      video.hidden = true;
-      captureBtn.hidden = true;
-      retakeBtn.hidden = false;
-      confirmBtn.hidden = false;
+      preview.hidden = false; video.hidden = true;
+      captureBtn.hidden = true; retakeBtn.hidden = false; confirmBtn.hidden = false;
       stopCamera();
     };
 
     retakeBtn.onclick = async () => {
       capturedDataUrl = null;
-      preview.hidden = true;
-      video.hidden = false;
-      captureBtn.hidden = false;
-      retakeBtn.hidden = true;
-      confirmBtn.hidden = true;
+      preview.hidden = true; video.hidden = false;
+      captureBtn.hidden = false; retakeBtn.hidden = true; confirmBtn.hidden = true;
       statusEl.innerHTML = '';
       await startCamera();
     };
 
     confirmBtn.onclick = async () => {
       if (!capturedDataUrl) return;
-      confirmBtn.disabled = true;
-      retakeBtn.disabled = true;
+      confirmBtn.disabled = true; retakeBtn.disabled = true;
       statusEl.innerHTML = `<div class="message info">กำลังอัปโหลดรูปภาพ...</div>`;
       try {
-        const res = await fetch('/api/selfie', {
+        const res = await fetch(`/api/c/${cid}/selfie`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ studentId: user.studentId, image: capturedDataUrl })
         });
         const data = await res.json();
         if (!res.ok) {
-          statusEl.innerHTML = `<div class="message error">${data.error}</div>`;
-          confirmBtn.disabled = false;
-          retakeBtn.disabled = false;
+          statusEl.innerHTML = `<div class="message error">${escapeHtml(data.error)}</div>`;
+          confirmBtn.disabled = false; retakeBtn.disabled = false;
           return;
         }
         user.selfie = data.url;
-        localStorage.setItem('pr_user', JSON.stringify(user));
+        localStorage.setItem(userKey, JSON.stringify(user));
         statusEl.innerHTML = `<div class="message success">อัปโหลดสำเร็จ กำลังเข้าสู่หน้าโหวต...</div>`;
-        setTimeout(() => { window.location.href = 'vote.html'; }, 700);
+        setTimeout(() => { window.location.href = `/c/${cid}/vote`; }, 700);
       } catch (e) {
-        statusEl.innerHTML = `<div class="message error">เกิดข้อผิดพลาด: ${e.message}</div>`;
-        confirmBtn.disabled = false;
-        retakeBtn.disabled = false;
+        statusEl.innerHTML = `<div class="message error">${escapeHtml(e.message)}</div>`;
+        confirmBtn.disabled = false; retakeBtn.disabled = false;
       }
     };
 
-    function escapeHtml(s) {
-      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-      }[c]));
-    }
-
     window.addEventListener('beforeunload', stopCamera);
-
     startCamera();
   </script>
 </body>

@@ -3,93 +3,59 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ลงทะเบียน - Peer Review</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>ห้องเรียนทั้งหมด</title>
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div class="container">
-    <h1>ระบบให้คะแนนเพื่อน (Peer Review)</h1>
-    <p class="subtitle">กรอกข้อมูลเพื่อเข้าสู่ระบบ</p>
+  <div class="container wide">
+    <h1>ห้องเรียนทั้งหมด</h1>
+    <p class="subtitle">เลือกห้องเรียนที่ต้องการเข้า</p>
 
-    <form id="registerForm">
-      <label for="studentId">รหัสนักศึกษา</label>
-      <input type="text" id="studentId" placeholder="เช่น 65010001" required />
-
-      <label for="name">ชื่อ - นามสกุล</label>
-      <input type="text" id="name" placeholder="เช่น สมชาย ใจดี" required />
-
-      <label>เลือกกลุ่ม</label>
-      <div class="group-buttons">
-        <button type="button" class="group-btn" data-group="1">กลุ่ม 1</button>
-        <button type="button" class="group-btn" data-group="2">กลุ่ม 2</button>
-        <button type="button" class="group-btn" data-group="3">กลุ่ม 3</button>
-        <button type="button" class="group-btn" data-group="4">กลุ่ม 4</button>
-      </div>
-      <input type="hidden" id="group" required />
-
-      <button type="submit" class="primary">เข้าสู่ระบบ / ลงทะเบียน</button>
-    </form>
-
-    <div id="message"></div>
+    <div id="list" class="classroom-list">
+      <p class="hint">กำลังโหลด...</p>
+    </div>
 
     <p class="hint" style="margin-top: 24px; text-align: center;">
-      <a href="dashboard.html" style="color: #888; margin-right: 14px;">Dashboard</a>
-      <a href="admin.html" style="color: #888;">เข้าสู่ระบบสำหรับผู้ดูแล</a>
+      <a href="/admin" style="color: #888;">เข้าระบบสำหรับผู้ดูแล</a>
     </p>
   </div>
 
   <script>
-    const form = document.getElementById('registerForm');
-    const msg = document.getElementById('message');
-    const groupInput = document.getElementById('group');
-
-    const saved = localStorage.getItem('pr_user');
-    if (saved) {
-      const u = JSON.parse(saved);
-      // If already has selfie, go straight to vote; otherwise to selfie
-      if (u.selfie) window.location.href = 'vote.html';
-      else window.location.href = 'selfie.html';
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
     }
 
-    document.querySelectorAll('.group-btn').forEach(btn => {
-      btn.onclick = () => {
-        document.querySelectorAll('.group-btn').forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
-        groupInput.value = btn.dataset.group;
-      };
-    });
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      msg.innerHTML = '';
-      if (!groupInput.value) {
-        msg.innerHTML = `<div class="message error">กรุณาเลือกกลุ่ม</div>`;
-        return;
-      }
-      const payload = {
-        studentId: document.getElementById('studentId').value.trim(),
-        name: document.getElementById('name').value.trim(),
-        group: groupInput.value
-      };
+    async function load() {
       try {
-        const res = await fetch('/api/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        const res = await fetch('/api/classrooms');
         const data = await res.json();
-        if (!res.ok) {
-          msg.innerHTML = `<div class="message error">${data.error}</div>`;
+        const el = document.getElementById('list');
+        if (!data.classrooms || data.classrooms.length === 0) {
+          el.innerHTML = `<div class="empty-state">ยังไม่มีห้องเรียน — รอผู้ดูแลสร้างห้องเรียนก่อน</div>`;
           return;
         }
-        localStorage.setItem('pr_user', JSON.stringify(data.user));
-        msg.innerHTML = `<div class="message success">${data.message} กำลังไปถ่ายรูป Selfie...</div>`;
-        const next = data.user.selfie ? 'vote.html' : 'selfie.html';
-        setTimeout(() => { window.location.href = next; }, 600);
-      } catch (err) {
-        msg.innerHTML = `<div class="message error">เกิดข้อผิดพลาด: ${err.message}</div>`;
+        el.innerHTML = data.classrooms.map(c => `
+          <a class="classroom-card" href="/c/${escapeHtml(c.id)}">
+            <div class="cc-code">${escapeHtml(c.code)}</div>
+            <div class="cc-name">${escapeHtml(c.name)}</div>
+            <div class="cc-uni">${escapeHtml(c.university || '')}</div>
+            ${c.description ? `<div class="cc-desc">${escapeHtml(c.description)}</div>` : ''}
+            <div class="cc-meta">
+              <span>นักศึกษา ${c.studentCount} คน</span>
+              <span class="${c.registrationOpen ? 'open' : 'closed'}">
+                ${c.registrationOpen ? '● เปิดลงทะเบียน' : '○ ปิดลงทะเบียน'}
+              </span>
+            </div>
+          </a>
+        `).join('');
+      } catch (e) {
+        document.getElementById('list').innerHTML = `<div class="message error">โหลดข้อมูลไม่ได้</div>`;
       }
-    });
+    }
+
+    load();
   </script>
 </body>
 </html>

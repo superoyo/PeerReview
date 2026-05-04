@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ระบบหลังบ้าน - Peer Review</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>ระบบหลังบ้าน</title>
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
   <div id="loginView" class="container">
@@ -19,28 +19,55 @@
     </form>
     <div id="loginMsg"></div>
     <p class="hint" style="margin-top: 24px; text-align: center;">
-      <a href="index.html" style="color: #888;">← กลับหน้าหลัก</a>
+      <a href="/" style="color: #888;">← กลับหน้าหลัก</a>
     </p>
   </div>
 
-  <div id="dashboardView" class="container wide" style="display: none;">
+  <!-- Super-admin view: list classrooms -->
+  <div id="superView" class="container wide" style="display: none;">
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
       <div>
-        <h1>ระบบหลังบ้าน Peer Review</h1>
-        <p class="subtitle" style="margin: 0;">จัดการการลงทะเบียน การโหวต และคะแนน</p>
+        <h1>จัดการห้องเรียน</h1>
+        <p class="subtitle" style="margin: 0;">สร้าง / แก้ไข / ลบห้องเรียน</p>
       </div>
-      <button class="secondary" id="logoutBtn">ออกจากระบบ</button>
+      <div style="display:flex; gap:8px; flex-wrap: wrap;">
+        <button id="newClassBtn" class="primary" style="margin:0;">+ สร้างห้องเรียนใหม่</button>
+        <button class="secondary" id="logoutBtn1">ออกจากระบบ</button>
+      </div>
+    </div>
+
+    <div id="classroomsList" style="margin-top: 24px;">
+      <p class="hint">กำลังโหลด...</p>
+    </div>
+  </div>
+
+  <!-- Classroom admin view -->
+  <div id="classView" class="container wide" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <div>
+        <a href="/admin" style="color:#888; font-size:13px; text-decoration:none;">← จัดการห้องเรียน</a>
+        <h1 id="cTitle" style="margin-top: 4px;">-</h1>
+        <p class="subtitle" id="cSubtitle" style="margin: 0;">-</p>
+      </div>
+      <button class="secondary" id="logoutBtn2">ออกจากระบบ</button>
     </div>
 
     <div class="status-bar">
-      <div>
-        สถานะการโหวต:
-        <span id="voteState" class="vote-state closed">กำลังโหลด...</span>
+      <div class="status-grp">
+        <span>การลงทะเบียน:
+          <span id="regState" class="vote-state closed">-</span>
+        </span>
+        <span>การโหวต:
+          <span id="voteState" class="vote-state closed">-</span>
+        </span>
       </div>
       <div class="actions">
+        <button id="toggleReg" class="secondary">เปิด/ปิด ลงทะเบียน</button>
         <button id="toggleVote" class="success">เปิดให้โหวต</button>
+        <a id="dashLink" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:12px 24px;border-radius:8px;background:#f0f2f8;color:#444;font-size:15px;font-weight:500;">เปิด Dashboard</a>
+        <a id="regLink" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:12px 24px;border-radius:8px;background:#f0f2f8;color:#444;font-size:15px;font-weight:500;">หน้าลงทะเบียน</a>
         <button id="exportBtn" class="secondary">Export CSV</button>
-        <button id="exportJsonBtn" class="secondary">Export JSON ทั้งหมด</button>
+        <button id="exportJsonBtn" class="secondary">Export JSON</button>
         <button id="resetVotesBtn" class="danger">ล้างคะแนนโหวต</button>
         <button id="resetAllBtn" class="danger">ล้างข้อมูลทั้งหมด</button>
       </div>
@@ -58,12 +85,27 @@
   <div id="modalRoot"></div>
 
   <script>
+    const pathParts = window.location.pathname.split('/');
+    // /admin → super; /c/:cid/admin → classroom view
+    const cid = (pathParts[1] === 'c' && pathParts[3] === 'admin') ? pathParts[2] : null;
+
     let token = localStorage.getItem('pr_admin_token') || null;
 
     const loginView = document.getElementById('loginView');
-    const dashboardView = document.getElementById('dashboardView');
+    const superView = document.getElementById('superView');
+    const classView = document.getElementById('classView');
 
-    if (token) showDashboard();
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+    function formatDate(iso) {
+      if (!iso) return '-';
+      return new Date(iso).toLocaleString('th-TH', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
+    if (token) showAuthed();
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -78,24 +120,24 @@
           body: JSON.stringify({ username, password })
         });
         const data = await res.json();
-        if (!res.ok) {
-          msg.innerHTML = `<div class="message error">${data.error}</div>`;
-          return;
-        }
+        if (!res.ok) { msg.innerHTML = `<div class="message error">${escapeHtml(data.error)}</div>`; return; }
         token = data.token;
         localStorage.setItem('pr_admin_token', token);
-        showDashboard();
+        showAuthed();
       } catch (err) {
-        msg.innerHTML = `<div class="message error">${err.message}</div>`;
+        msg.innerHTML = `<div class="message error">${escapeHtml(err.message)}</div>`;
       }
     });
 
-    document.getElementById('logoutBtn').onclick = () => {
+    function logout() {
       localStorage.removeItem('pr_admin_token');
       token = null;
-      dashboardView.style.display = 'none';
+      superView.style.display = 'none';
+      classView.style.display = 'none';
       loginView.style.display = '';
-    };
+    }
+    document.getElementById('logoutBtn1').onclick = logout;
+    document.getElementById('logoutBtn2').onclick = logout;
 
     function authFetch(url, opts = {}) {
       return fetch(url, {
@@ -108,38 +150,159 @@
       });
     }
 
-    async function showDashboard() {
+    function showAuthed() {
       loginView.style.display = 'none';
-      dashboardView.style.display = '';
-      await refreshAll();
-    }
-
-    async function refreshAll() {
-      await Promise.all([loadUsers(), loadScores(), loadStatus()]);
-    }
-
-    async function loadStatus() {
-      const res = await fetch('/api/voting-status');
-      const { votingOpen } = await res.json();
-      const stateEl = document.getElementById('voteState');
-      const btn = document.getElementById('toggleVote');
-      if (votingOpen) {
-        stateEl.textContent = 'เปิดให้โหวต';
-        stateEl.className = 'vote-state open';
-        btn.textContent = 'ปิดการโหวต';
-        btn.className = 'danger';
+      if (cid) {
+        classView.style.display = '';
+        initClassView();
       } else {
-        stateEl.textContent = 'ปิดอยู่';
-        stateEl.className = 'vote-state closed';
-        btn.textContent = 'เปิดให้โหวต';
-        btn.className = 'success';
+        superView.style.display = '';
+        initSuperView();
       }
     }
 
+    // ==================== Super-admin: classroom management ====================
+
+    async function initSuperView() {
+      await loadClassrooms();
+    }
+
+    async function loadClassrooms() {
+      const res = await authFetch('/api/admin/classrooms');
+      if (res.status === 401) { logout(); return; }
+      const { classrooms } = await res.json();
+      const el = document.getElementById('classroomsList');
+      if (!classrooms.length) {
+        el.innerHTML = `<div class="empty-state">ยังไม่มีห้องเรียน — กดปุ่ม "สร้างห้องเรียนใหม่" ด้านบน</div>`;
+        return;
+      }
+      el.innerHTML = classrooms.map(c => `
+        <div class="classroom-row card">
+          <div class="cr-main">
+            <div class="cr-code">${escapeHtml(c.code)}</div>
+            <div class="cr-name">${escapeHtml(c.name)}</div>
+            <div class="cr-uni">${escapeHtml(c.university || '')}</div>
+            ${c.description ? `<div class="cr-desc">${escapeHtml(c.description)}</div>` : ''}
+            <div class="cr-meta">
+              <span>นักศึกษา <b>${c.studentCount}</b> คน</span>
+              <span>โหวต <b>${c.voteCount}</b> รายการ</span>
+              <span class="${c.registrationOpen ? 'open' : 'closed'}">${c.registrationOpen ? '● ลงทะเบียน เปิด' : '○ ลงทะเบียน ปิด'}</span>
+              <span class="${c.votingOpen ? 'open' : 'closed'}">${c.votingOpen ? '● โหวต เปิด' : '○ โหวต ปิด'}</span>
+              ${c.peerReviewEnabled ? '<span class="tag-pr">Peer Review</span>' : ''}
+            </div>
+          </div>
+          <div class="cr-actions">
+            <a href="/c/${escapeHtml(c.id)}/admin" class="primary" style="text-decoration:none;display:inline-block;padding:10px 18px;border-radius:8px;background:#667eea;color:#fff;font-size:14px;font-weight:500;">จัดการ</a>
+            <a href="/c/${escapeHtml(c.id)}" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:10px 18px;border-radius:8px;background:#f0f2f8;color:#444;font-size:14px;">หน้าลงทะเบียน</a>
+            <a href="/c/${escapeHtml(c.id)}/dashboard" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:10px 18px;border-radius:8px;background:#f0f2f8;color:#444;font-size:14px;">Dashboard</a>
+            <button class="danger" data-del="${escapeHtml(c.id)}">ลบ</button>
+          </div>
+        </div>
+      `).join('');
+      el.querySelectorAll('button[data-del]').forEach(b => {
+        b.onclick = async () => {
+          const id = b.dataset.del;
+          if (!confirm(`ลบห้องเรียน "${id}" และข้อมูลทั้งหมด? การกระทำนี้ย้อนกลับไม่ได้`)) return;
+          await authFetch(`/api/admin/classrooms/${id}`, { method: 'DELETE' });
+          await loadClassrooms();
+        };
+      });
+    }
+
+    document.getElementById('newClassBtn').onclick = () => {
+      const root = document.getElementById('modalRoot');
+      root.innerHTML = `
+        <div class="modal-backdrop" id="modalBg">
+          <div class="modal" onclick="event.stopPropagation()">
+            <button class="secondary modal-close" id="closeModal">ปิด</button>
+            <h3>สร้างห้องเรียนใหม่</h3>
+            <form id="newForm">
+              <label>รหัสวิชา (เช่น GE 207)</label>
+              <input type="text" id="nfCode" required />
+              <label>ชื่อวิชา</label>
+              <input type="text" id="nfName" required />
+              <label>คำอธิบายรายวิชา</label>
+              <input type="text" id="nfDesc" placeholder="ไม่บังคับ" />
+              <label>มหาวิทยาลัย</label>
+              <input type="text" id="nfUni" value="มหาวิทยาลัยกรุงเทพ" />
+              <label style="display:flex; align-items:center; gap:8px; margin-top:14px;">
+                <input type="checkbox" id="nfPR" checked />
+                <span>เปิดใช้ Peer Review (มีกลุ่ม โหวตคะแนน เช็คชื่อ)</span>
+              </label>
+              <button type="submit" class="primary">สร้างห้องเรียน</button>
+              <div id="nfMsg"></div>
+            </form>
+          </div>
+        </div>
+      `;
+      const close = () => { root.innerHTML = ''; };
+      document.getElementById('closeModal').onclick = close;
+      document.getElementById('modalBg').onclick = (e) => { if (e.target.id === 'modalBg') close(); };
+      document.getElementById('newForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const payload = {
+          code: document.getElementById('nfCode').value.trim(),
+          name: document.getElementById('nfName').value.trim(),
+          description: document.getElementById('nfDesc').value.trim(),
+          university: document.getElementById('nfUni').value.trim(),
+          peerReviewEnabled: document.getElementById('nfPR').checked
+        };
+        const res = await authFetch('/api/admin/classrooms', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          document.getElementById('nfMsg').innerHTML = `<div class="message error">${escapeHtml(data.error)}</div>`;
+          return;
+        }
+        close();
+        await loadClassrooms();
+      };
+    };
+
+    // ==================== Classroom admin view ====================
+
+    let currentClass = null;
+
+    async function initClassView() {
+      await Promise.all([loadClassMeta(), loadUsers(), loadScores()]);
+    }
+
+    async function loadClassMeta() {
+      const res = await authFetch(`/api/admin/classrooms`);
+      if (res.status === 401) { logout(); return; }
+      const { classrooms } = await res.json();
+      const c = classrooms.find(x => x.id === cid);
+      if (!c) {
+        classView.innerHTML = `<div class="message error">ไม่พบห้องเรียน</div>`;
+        return;
+      }
+      currentClass = c;
+      document.getElementById('cTitle').textContent = `${c.code} — ${c.name}`;
+      document.getElementById('cSubtitle').textContent = `${c.university || ''}`;
+      document.getElementById('regLink').href = `/c/${c.id}`;
+      document.getElementById('dashLink').href = `/c/${c.id}/dashboard`;
+      const regEl = document.getElementById('regState');
+      const voteEl = document.getElementById('voteState');
+      regEl.textContent = c.registrationOpen ? 'เปิด' : 'ปิด';
+      regEl.className = 'vote-state ' + (c.registrationOpen ? 'open' : 'closed');
+      voteEl.textContent = c.votingOpen ? 'เปิด' : 'ปิด';
+      voteEl.className = 'vote-state ' + (c.votingOpen ? 'open' : 'closed');
+      const tv = document.getElementById('toggleVote');
+      tv.textContent = c.votingOpen ? 'ปิดการโหวต' : 'เปิดให้โหวต';
+      tv.className = c.votingOpen ? 'danger' : 'success';
+    }
+
     document.getElementById('toggleVote').onclick = async () => {
-      const res = await authFetch('/api/admin/toggle-voting', { method: 'POST' });
-      if (!res.ok) { alert('เกิดข้อผิดพลาด'); return; }
-      await loadStatus();
+      const r = await authFetch(`/api/c/${cid}/admin/toggle-voting`, { method: 'POST' });
+      if (!r.ok) { alert('error'); return; }
+      await loadClassMeta();
+    };
+    document.getElementById('toggleReg').onclick = async () => {
+      const r = await authFetch(`/api/c/${cid}/admin/toggle-registration`, { method: 'POST' });
+      if (!r.ok) { alert('error'); return; }
+      await loadClassMeta();
     };
 
     async function downloadFile(url, defaultName) {
@@ -151,28 +314,24 @@
       const filename = m ? m[1] : defaultName;
       const objUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = objUrl;
-      a.download = filename;
-      a.click();
+      a.href = objUrl; a.download = filename; a.click();
       URL.revokeObjectURL(objUrl);
     }
 
     document.getElementById('exportBtn').onclick = () =>
-      downloadFile('/api/admin/export', `peer-review-scores-${Date.now()}.csv`);
-
+      downloadFile(`/api/c/${cid}/admin/export`, `${cid}-scores.csv`);
     document.getElementById('exportJsonBtn').onclick = () =>
-      downloadFile('/api/admin/export-json', `peer-review-data-${Date.now()}.json`);
+      downloadFile(`/api/c/${cid}/admin/export-json`, `${cid}-data.json`);
 
     document.getElementById('resetVotesBtn').onclick = async () => {
-      if (!confirm('ล้างคะแนนโหวตทั้งหมด? (รายชื่อจะยังอยู่)')) return;
-      await authFetch('/api/admin/reset', { method: 'POST', body: JSON.stringify({ what: 'votes' }) });
-      await refreshAll();
+      if (!confirm('ล้างคะแนนโหวตทั้งหมดในห้องนี้?')) return;
+      await authFetch(`/api/c/${cid}/admin/reset`, { method: 'POST', body: JSON.stringify({ what: 'votes' }) });
+      await initClassView();
     };
-
     document.getElementById('resetAllBtn').onclick = async () => {
-      if (!confirm('ล้างข้อมูลทั้งหมด รวมถึงรายชื่อ? การกระทำนี้ย้อนกลับไม่ได้')) return;
-      await authFetch('/api/admin/reset', { method: 'POST', body: JSON.stringify({ what: 'all' }) });
-      await refreshAll();
+      if (!confirm('ล้างข้อมูลทั้งหมดของห้องนี้ รวมถึงรายชื่อ และรูป? การกระทำนี้ย้อนกลับไม่ได้')) return;
+      await authFetch(`/api/c/${cid}/admin/reset`, { method: 'POST', body: JSON.stringify({ what: 'all' }) });
+      await initClassView();
     };
 
     document.querySelectorAll('.tab').forEach(t => {
@@ -185,12 +344,8 @@
     });
 
     async function loadUsers() {
-      const res = await authFetch('/api/admin/users');
-      if (res.status === 401) {
-        localStorage.removeItem('pr_admin_token');
-        location.reload();
-        return;
-      }
+      const res = await authFetch(`/api/c/${cid}/admin/users`);
+      if (res.status === 401) { logout(); return; }
       const { grouped, users, classDates } = await res.json();
       const el = document.getElementById('usersTab');
       if (users.length === 0) {
@@ -208,8 +363,9 @@
               <thead>
                 <tr>
                   <th>รูป</th>
-                  <th>รหัสนักศึกษา</th>
+                  <th>รหัส</th>
                   <th>ชื่อ-นามสกุล</th>
+                  <th>ชื่อเล่น</th>
                   <th>เวลาลงทะเบียน</th>
                   <th>วันที่มาเรียน</th>
                   <th>คะแนนที่ได้รับ</th>
@@ -217,16 +373,14 @@
               </thead>
               <tbody>
                 ${grouped[g].map(u => {
-                  const attended = Array.isArray(u.attendance) ? u.attendance : [];
+                  const att = Array.isArray(u.attendance) ? u.attendance : [];
                   const tags = dates.length === 0
                     ? '-'
                     : (u.attendance === undefined
                         ? '<span style="color:#aaa;font-size:13px;">ยังไม่ได้ส่ง</span>'
-                        : dates.map(d => attended.includes(d.id)
+                        : dates.map(d => att.includes(d.id)
                             ? `<span class="attend-tag">${escapeHtml(d.label)}</span>`
-                            : `<span class="attend-tag absent">${escapeHtml(d.label)}</span>`
-                          ).join(' ')
-                      );
+                            : `<span class="attend-tag absent">${escapeHtml(d.label)}</span>`).join(' '));
                   const photo = u.selfie
                     ? `<img class="thumb" src="${escapeHtml(u.selfie)}" alt="" />`
                     : `<div class="thumb no-photo">?</div>`;
@@ -234,13 +388,11 @@
                     <tr>
                       <td>${photo}</td>
                       <td>${escapeHtml(u.studentId)}</td>
-                      <td>${escapeHtml(u.name)}</td>
+                      <td>${escapeHtml((u.firstName || '') + ' ' + (u.lastName || ''))}</td>
+                      <td>${escapeHtml(u.nickname || '-')}</td>
                       <td>${formatDate(u.registeredAt)}</td>
                       <td>${tags}</td>
-                      <td>
-                        <button class="secondary view-votes-btn"
-                          data-id="${escapeHtml(u.studentId)}">ดูคะแนน</button>
-                      </td>
+                      <td><button class="secondary view-votes-btn" data-id="${escapeHtml(u.studentId)}">ดูคะแนน</button></td>
                     </tr>
                   `;
                 }).join('')}
@@ -256,7 +408,7 @@
     }
 
     async function loadScores() {
-      const res = await authFetch('/api/admin/scores');
+      const res = await authFetch(`/api/c/${cid}/admin/scores`);
       if (!res.ok) return;
       const { scores, classDates, attendancePercent } = await res.json();
       const el = document.getElementById('scoresTab');
@@ -267,9 +419,9 @@
       const dates = classDates || [];
       const pct = attendancePercent || 5;
       const groups = {};
-      scores.forEach(s => { if (!groups[s.group]) groups[s.group] = []; groups[s.group].push(s); });
+      scores.forEach(s => { const k = s.group || '(ไม่มีกลุ่ม)'; if (!groups[k]) groups[k] = []; groups[k].push(s); });
       const groupNames = Object.keys(groups).sort((a, b) => a.localeCompare(b));
-      let html = `<p class="hint">คะแนนโหวต = <b>Mode</b> (ค่าที่พบบ่อยที่สุด) · คะแนนเข้าเรียน = ${pct}% × จำนวนวันที่มา (เต็ม ${pct * dates.length}%)</p>`;
+      let html = `<p class="hint">คะแนนโหวต = <b>Mode</b> · คะแนนเข้าเรียน = ${pct}% × วัน (เต็ม ${pct * dates.length}%)</p>`;
       const dateHeaders = dates.map(d => `<th>${escapeHtml(d.label)}</th>`).join('');
       groupNames.forEach(g => {
         html += `
@@ -278,22 +430,17 @@
             <table>
               <thead>
                 <tr>
-                  <th>รูป</th>
-                  <th>รหัสนักศึกษา</th>
-                  <th>ชื่อ-นามสกุล</th>
-                  <th>ผู้โหวต</th>
-                  <th>คะแนน Mode</th>
-                  <th>คะแนนทั้งหมด</th>
+                  <th>รูป</th><th>รหัส</th><th>ชื่อ</th><th>ผู้โหวต</th>
+                  <th>Mode</th><th>คะแนนทั้งหมด</th>
                   ${dateHeaders}
-                  <th>เข้าเรียน</th>
-                  <th>คะแนนเข้าเรียน</th>
+                  <th>เข้าเรียน</th><th>คะแนนเข้าเรียน</th>
                 </tr>
               </thead>
               <tbody>
                 ${groups[g].map(s => {
                   const cells = dates.map(d => {
-                    const attended = (s.attendance || []).includes(d.id);
-                    return `<td style="text-align:center;">${attended ? '✓' : '<span style="color:#ccc;">–</span>'}</td>`;
+                    const ok = (s.attendance || []).includes(d.id);
+                    return `<td style="text-align:center;">${ok ? '✓' : '<span style="color:#ccc;">–</span>'}</td>`;
                   }).join('');
                   const photo = s.selfie
                     ? `<img class="thumb" src="${escapeHtml(s.selfie)}" alt="" />`
@@ -302,7 +449,7 @@
                     <tr>
                       <td>${photo}</td>
                       <td>${escapeHtml(s.studentId)}</td>
-                      <td>${escapeHtml(s.name)}</td>
+                      <td>${escapeHtml(s.fullName)}${s.nickname ? ` <span style="color:#888;">(${escapeHtml(s.nickname)})</span>` : ''}</td>
                       <td>${s.voteCount}</td>
                       <td>${s.voteCount > 0 ? `<span class="score-pill">${escapeHtml(s.modeScore)}</span>` : '-'}</td>
                       <td style="color:#777; font-size:13px;">${s.scores.join(', ') || '-'}</td>
@@ -321,7 +468,7 @@
     }
 
     async function showVoteDetails(studentId) {
-      const res = await authFetch(`/api/admin/votes/${encodeURIComponent(studentId)}`);
+      const res = await authFetch(`/api/c/${cid}/admin/votes/${encodeURIComponent(studentId)}`);
       const data = await res.json();
       const root = document.getElementById('modalRoot');
       const u = data.user;
@@ -332,49 +479,32 @@
               <td>${escapeHtml(v.voterName)}</td>
               <td><span class="score-pill">${v.score}</span></td>
               <td style="color:#888;font-size:13px;">${formatDate(v.timestamp)}</td>
-            </tr>
-          `).join('')
+            </tr>`).join('')
         : `<tr><td colspan="4" style="text-align:center;color:#888;padding:20px;">ยังไม่มีคนโหวต</td></tr>`;
-
+      const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.name || u.studentId;
       root.innerHTML = `
         <div class="modal-backdrop" id="modalBg">
           <div class="modal" onclick="event.stopPropagation()">
             <button class="secondary modal-close" id="closeModal">ปิด</button>
-            <h3>คะแนนโหวตของ ${escapeHtml(u.name)} (${escapeHtml(u.studentId)})</h3>
+            <h3>คะแนนโหวตของ ${escapeHtml(fullName)} (${escapeHtml(u.studentId)})</h3>
             <p class="hint" style="margin-bottom: 14px;">
-              กลุ่ม ${escapeHtml(u.group)} ·
-              ผู้โหวต ${data.count} คน ·
-              คะแนน Mode: <b>${data.count > 0 ? escapeHtml(data.mode) : '-'}</b>
+              กลุ่ม ${escapeHtml(u.group || '-')} · ผู้โหวต ${data.count} คน · Mode: <b>${data.count > 0 ? escapeHtml(data.mode) : '-'}</b>
             </p>
             <table>
-              <thead>
-                <tr><th>รหัสผู้โหวต</th><th>ชื่อ</th><th>คะแนน</th><th>เวลา</th></tr>
-              </thead>
+              <thead><tr><th>รหัส</th><th>ชื่อ</th><th>คะแนน</th><th>เวลา</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
           </div>
         </div>
       `;
-      document.getElementById('modalBg').onclick = () => { root.innerHTML = ''; };
+      document.getElementById('modalBg').onclick = (e) => { if (e.target.id === 'modalBg') root.innerHTML = ''; };
       document.getElementById('closeModal').onclick = () => { root.innerHTML = ''; };
     }
 
-    function escapeHtml(s) {
-      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-      }[c]));
-    }
-
-    function formatDate(iso) {
-      if (!iso) return '-';
-      const d = new Date(iso);
-      return d.toLocaleString('th-TH', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-    }
-
-    // Auto-refresh every 5s while dashboard is visible
+    // Auto-refresh class view every 5s
     setInterval(() => {
-      if (dashboardView.style.display !== 'none' && token) {
-        refreshAll();
+      if (cid && classView.style.display !== 'none' && token) {
+        loadClassMeta(); loadUsers(); loadScores();
       }
     }, 5000);
   </script>

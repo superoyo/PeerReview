@@ -342,6 +342,97 @@ table tbody tr:hover { background: #f9faff; }
   border-radius: 10px;
 }
 
+/* Classroom listing (public landing) */
+.classroom-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+.classroom-card {
+  display: block;
+  background: #fff;
+  border: 1.5px solid #e6eaf2;
+  border-radius: 12px;
+  padding: 18px;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.15s;
+}
+.classroom-card:hover {
+  border-color: #667eea;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.15);
+}
+.cc-code {
+  display: inline-block;
+  background: #667eea;
+  color: #fff;
+  padding: 3px 12px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+.cc-name { font-size: 17px; font-weight: 600; color: #222; }
+.cc-uni { font-size: 13px; color: #888; margin-top: 2px; }
+.cc-desc { font-size: 13px; color: #666; margin-top: 8px; }
+.cc-meta {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: #777;
+  flex-wrap: wrap;
+}
+.cc-meta .open { color: #27ae60; font-weight: 600; }
+.cc-meta .closed { color: #aaa; }
+
+/* Classroom row in admin list */
+.classroom-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.cr-main { flex: 1; min-width: 240px; }
+.cr-code {
+  display: inline-block;
+  background: #4555a6;
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.cr-name { font-size: 16px; font-weight: 600; color: #222; }
+.cr-uni { font-size: 12px; color: #888; margin-top: 2px; }
+.cr-desc { font-size: 13px; color: #666; margin-top: 6px; }
+.cr-meta {
+  display: flex; gap: 14px; flex-wrap: wrap;
+  margin-top: 10px; font-size: 12px; color: #777;
+  align-items: center;
+}
+.cr-meta .open { color: #27ae60; font-weight: 600; }
+.cr-meta .closed { color: #aaa; }
+.tag-pr {
+  background: #eef0ff;
+  color: #4555a6;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.cr-actions {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start;
+}
+
+.status-grp {
+  display: flex; gap: 16px; flex-wrap: wrap;
+}
+
 .date-list {
   display: flex;
   flex-wrap: wrap;

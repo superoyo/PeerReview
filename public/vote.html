@@ -3,40 +3,49 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>โหวตคะแนน - Peer Review</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>โหวตคะแนน</title>
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
   <div class="container">
     <h1>หน้าให้คะแนนเพื่อนในกลุ่ม</h1>
-
     <div id="userInfo" class="user-info">กำลังโหลด...</div>
-
     <div id="content"></div>
-
     <div id="message"></div>
-
     <div style="margin-top: 24px; text-align: center;">
       <button class="secondary" id="logoutBtn">ออกจากระบบ</button>
     </div>
   </div>
 
   <script>
-    const user = JSON.parse(localStorage.getItem('pr_user') || 'null');
-    if (!user) window.location.href = 'index.html';
+    const cid = window.location.pathname.split('/')[2];
+    const userKey = `pr_user_${cid}`;
+    const user = JSON.parse(localStorage.getItem(userKey) || 'null');
+    if (!user) window.location.href = `/c/${cid}`;
 
     const userInfoEl = document.getElementById('userInfo');
     const contentEl = document.getElementById('content');
     const msgEl = document.getElementById('message');
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+    function fullName() {
+      return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.name || user.studentId;
+    }
+
     document.getElementById('logoutBtn').onclick = () => {
-      localStorage.removeItem('pr_user');
-      window.location.href = 'index.html';
+      localStorage.removeItem(userKey);
+      window.location.href = `/c/${cid}`;
     };
 
     userInfoEl.innerHTML = `
-      <b>รหัส:</b> ${escapeHtml(user.studentId)} &nbsp;|&nbsp;
-      <b>ชื่อ:</b> ${escapeHtml(user.name)} &nbsp;|&nbsp;
-      <b>กลุ่ม:</b> ${escapeHtml(user.group)}
+      <b>${escapeHtml(fullName())}</b>
+      ${user.nickname ? `(${escapeHtml(user.nickname)})` : ''}
+      &nbsp;|&nbsp; <b>รหัส:</b> ${escapeHtml(user.studentId)}
+      ${user.group ? ` &nbsp;|&nbsp; <b>กลุ่ม:</b> ${escapeHtml(user.group)}` : ''}
     `;
 
     let scores = {};
@@ -50,7 +59,7 @@
     async function loadClassDates() {
       if (classDates.length) return;
       try {
-        const res = await fetch('/api/class-dates');
+        const res = await fetch(`/api/c/${cid}/class-dates`);
         const data = await res.json();
         classDates = data.dates || [];
       } catch (e) { classDates = []; }
@@ -58,10 +67,10 @@
 
     async function loadMe() {
       try {
-        const res = await fetch(`/api/me/${encodeURIComponent(user.studentId)}`);
+        const res = await fetch(`/api/c/${cid}/me/${encodeURIComponent(user.studentId)}`);
         if (res.status === 404) {
-          localStorage.removeItem('pr_user');
-          window.location.href = 'index.html';
+          localStorage.removeItem(userKey);
+          window.location.href = `/c/${cid}`;
           return false;
         }
         if (!res.ok) return false;
@@ -102,14 +111,12 @@
       if (!classDates.length) return '';
       const items = classDates.map(d => `
         <label class="date-check">
-          <input type="checkbox" value="${escapeHtml(d.id)}"
-            ${attendance.has(d.id) ? 'checked' : ''}
-            ${editable ? '' : 'disabled'} />
+          <input type="checkbox" value="${escapeHtml(d.id)}" ${attendance.has(d.id) ? 'checked' : ''} ${editable ? '' : 'disabled'} />
           <span>${escapeHtml(d.label)}</span>
         </label>
       `).join('');
       const hint = editable
-        ? 'ติ๊กเฉพาะวันที่คุณมาเรียน · บันทึกอัตโนมัติทุกครั้งที่เปลี่ยน'
+        ? 'ติ๊กเฉพาะวันที่คุณมาเรียน · บันทึกอัตโนมัติ'
         : 'บันทึกแล้ว ไม่สามารถแก้ไขได้';
       return `
         <h2>มาเรียนวันไหนบ้าง</h2>
@@ -136,35 +143,21 @@
       if (savingAttendance) return;
       savingAttendance = true;
       const status = document.getElementById('attendStatus');
-      if (status) {
-        status.textContent = 'กำลังบันทึก...';
-        status.style.color = '#888';
-      }
+      if (status) { status.textContent = 'กำลังบันทึก...'; status.style.color = '#888'; }
       try {
-        const res = await fetch('/api/attendance', {
+        const res = await fetch(`/api/c/${cid}/attendance`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            studentId: user.studentId,
-            attendance: Array.from(attendance)
-          })
+          body: JSON.stringify({ studentId: user.studentId, attendance: Array.from(attendance) })
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error || 'บันทึกไม่สำเร็จ');
         }
-        if (status) {
-          status.textContent = `✓ บันทึกแล้ว (${attendance.size} วัน)`;
-          status.style.color = '#27ae60';
-        }
+        if (status) { status.textContent = `✓ บันทึกแล้ว (${attendance.size} วัน)`; status.style.color = '#27ae60'; }
       } catch (e) {
-        if (status) {
-          status.textContent = '✗ ' + e.message;
-          status.style.color = '#c33';
-        }
-      } finally {
-        savingAttendance = false;
-      }
+        if (status) { status.textContent = '✗ ' + e.message; status.style.color = '#c33'; }
+      } finally { savingAttendance = false; }
     }
 
     function renderWaiting() {
@@ -182,10 +175,10 @@
 
     async function loadPeers() {
       try {
-        const res = await fetch(`/api/peers/${encodeURIComponent(user.studentId)}`);
+        const res = await fetch(`/api/c/${cid}/peers/${encodeURIComponent(user.studentId)}`);
         const data = await res.json();
         if (!res.ok) {
-          contentEl.innerHTML = `<div class="message error">${data.error}</div>`;
+          contentEl.innerHTML = `<div class="message error">${escapeHtml(data.error)}</div>`;
           return;
         }
         peers = data.peers;
@@ -201,7 +194,7 @@
         }
         renderPeers();
       } catch (e) {
-        contentEl.innerHTML = `<div class="message error">เกิดข้อผิดพลาด: ${e.message}</div>`;
+        contentEl.innerHTML = `<div class="message error">${escapeHtml(e.message)}</div>`;
       }
     }
 
@@ -211,30 +204,28 @@
           ? `<img src="${escapeHtml(p.selfie)}" alt="${escapeHtml(p.name)}" />`
           : `<div class="no-photo">?</div>`;
         return `
-        <div class="card">
-          <div class="peer-row">
-            <div class="peer-photo${p.selfie ? ' clickable' : ''}"
-                 ${p.selfie ? `data-photo="${escapeHtml(p.selfie)}" data-name="${escapeHtml(p.name)} (${escapeHtml(p.studentId)})"` : ''}>
-              ${photo}
-            </div>
-            <div class="peer-info">
-              <div class="pname">${escapeHtml(p.name)}</div>
-              <div class="pid">${escapeHtml(p.studentId)}</div>
-            </div>
-            <div class="score-buttons" data-target="${escapeHtml(p.studentId)}">
-              ${[1,2,3,4,5].map(n => `<button type="button" class="score-btn" data-score="${n}">${n}</button>`).join('')}
+          <div class="card">
+            <div class="peer-row">
+              <div class="peer-photo${p.selfie ? ' clickable' : ''}"
+                   ${p.selfie ? `data-photo="${escapeHtml(p.selfie)}" data-name="${escapeHtml(p.fullName || p.name)} (${escapeHtml(p.studentId)})"` : ''}>
+                ${photo}
+              </div>
+              <div class="peer-info">
+                <div class="pname">${escapeHtml(p.name)}</div>
+                <div class="pid">${escapeHtml(p.studentId)}</div>
+              </div>
+              <div class="score-buttons" data-target="${escapeHtml(p.studentId)}">
+                ${[1,2,3,4,5].map(n => `<button type="button" class="score-btn" data-score="${n}">${n}</button>`).join('')}
+              </div>
             </div>
           </div>
-        </div>
-      `;
+        `;
       }).join('');
 
       contentEl.innerHTML = `
         <h2>ให้คะแนนเพื่อนในกลุ่ม (1 = น้อยสุด, 5 = มากสุด)</h2>
         ${peersHtml}
-
         ${attendanceSection(true)}
-
         <button class="primary" id="submitBtn" disabled>ยืนยันคะแนนและการเข้าเรียน</button>
         <p class="hint" id="progressHint">เลือกคะแนนให้ครบทุกคน (0/${peers.length})</p>
       `;
@@ -256,7 +247,6 @@
       });
 
       bindAttendanceChange();
-
       document.getElementById('submitBtn').onclick = submitVote;
     }
 
@@ -281,8 +271,7 @@
 
     function updateProgress() {
       const done = Object.keys(scores).length;
-      document.getElementById('progressHint').textContent =
-        `เลือกคะแนนให้ครบทุกคน (${done}/${peers.length})`;
+      document.getElementById('progressHint').textContent = `เลือกคะแนนให้ครบทุกคน (${done}/${peers.length})`;
       document.getElementById('submitBtn').disabled = done !== peers.length;
     }
 
@@ -298,20 +287,17 @@
         attendance: attendList
       };
       try {
-        const res = await fetch('/api/vote', {
+        const res = await fetch(`/api/c/${cid}/vote`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if (!res.ok) {
-          msgEl.innerHTML = `<div class="message error">${data.error}</div>`;
-          return;
-        }
+        if (!res.ok) { msgEl.innerHTML = `<div class="message error">${escapeHtml(data.error)}</div>`; return; }
         msgEl.innerHTML = '';
         await refreshState();
       } catch (e) {
-        msgEl.innerHTML = `<div class="message error">เกิดข้อผิดพลาด: ${e.message}</div>`;
+        msgEl.innerHTML = `<div class="message error">${escapeHtml(e.message)}</div>`;
       }
     }
 
@@ -328,18 +314,10 @@
           <div style="margin-top: 18px; font-size: 36px;">✓</div>
           <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid #e6eaf2;">
             <div style="margin-bottom: 10px; color: #555; font-size: 14px;">วันที่บันทึกไว้</div>
-            ${classDates.length > 0
-              ? tags
-              : '<span style="color:#888;">-</span>'}
+            ${classDates.length > 0 ? tags : '<span style="color:#888;">-</span>'}
           </div>
         </div>
       `;
-    }
-
-    function escapeHtml(s) {
-      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-      }[c]));
     }
 
     init();

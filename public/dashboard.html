@@ -3,20 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard - Peer Review</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body class="dashboard-body">
   <div class="dashboard-fullscreen">
     <div class="dash-header">
-      <h1>Peer Review Dashboard</h1>
+      <div>
+        <h1 id="cTitle">Dashboard</h1>
+        <div style="font-size:12px;color:#888;" id="cSub"></div>
+      </div>
       <div class="dash-stats">
         <span>ผู้ลงทะเบียน: <b id="total">-</b> คน</span>
         <span>โหวตเสร็จ: <b id="voted" style="color:#27ae60;">-</b> คน</span>
         <span id="voteStateLabel"></span>
         <span class="dash-links">
-          <a href="index.html">หน้าลงทะเบียน</a>
-          <a href="admin.html">ระบบหลังบ้าน</a>
+          <a href="/" id="homeLink">หน้าหลัก</a>
+          <a id="regLink">ลงทะเบียน</a>
+          <a id="adminLink">หลังบ้าน</a>
         </span>
       </div>
     </div>
@@ -27,15 +31,33 @@
   </div>
 
   <script>
+    const cid = window.location.pathname.split('/')[2];
+    document.getElementById('regLink').href = `/c/${cid}`;
+    document.getElementById('adminLink').href = `/c/${cid}/admin`;
+
     const totalEl = document.getElementById('total');
     const votedEl = document.getElementById('voted');
     const groupsEl = document.getElementById('groupsDisplay');
     const voteStateEl = document.getElementById('voteStateLabel');
 
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
     async function load() {
       try {
-        const res = await fetch('/api/dashboard');
+        const res = await fetch(`/api/c/${cid}/dashboard`);
+        if (!res.ok) {
+          groupsEl.innerHTML = `<div class="message error">ไม่พบห้องเรียน</div>`;
+          return;
+        }
         const data = await res.json();
+        if (data.classroom) {
+          document.getElementById('cTitle').textContent = `${data.classroom.code} — ${data.classroom.name}`;
+          document.getElementById('cSub').textContent = data.classroom.university || '';
+        }
         totalEl.textContent = data.total;
         votedEl.textContent = data.votedCount;
         voteStateEl.innerHTML = data.votingOpen
@@ -62,12 +84,11 @@
                 ? `<img src="${escapeHtml(m.selfie)}?t=${Date.now()}" alt="" />`
                 : `<div class="no-photo">?</div>`;
               return `
-                <div class="${cls.join(' ')}" title="${escapeHtml(m.studentId)} ${escapeHtml(m.name)}${m.hasVoted ? ' · โหวตแล้ว' : ''}">
+                <div class="${cls.join(' ')}" title="${escapeHtml(m.studentId)} ${escapeHtml(m.fullName || m.name)}${m.hasVoted ? ' · โหวตแล้ว' : ''}">
                   <div class="member-photo">${photo}${badge}</div>
                   <div class="member-name">${escapeHtml(m.name)}</div>
                   <div class="member-id">${escapeHtml(m.studentId)}</div>
-                </div>
-              `;
+                </div>`;
             }).join('');
         return `
           <div class="group-card card">
@@ -79,15 +100,8 @@
               </span>
             </div>
             <div class="member-grid">${cards}</div>
-          </div>
-        `;
+          </div>`;
       }).join('');
-    }
-
-    function escapeHtml(s) {
-      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-      }[c]));
     }
 
     load();
