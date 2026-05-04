@@ -14,7 +14,10 @@
         <h1 id="cTitle" style="margin-top:6px;">-</h1>
         <p class="subtitle" id="cSub">-</p>
       </div>
-      <button class="secondary" id="logoutBtn">ออกจากระบบ</button>
+      <div style="display:flex; gap:8px;">
+        <a id="profileLink" class="secondary" style="text-decoration:none; padding:10px 18px; border-radius:8px; background:#f0f2f8; color:#444; font-weight:500;">👤 โปรไฟล์</a>
+        <button class="secondary" id="logoutBtn">ออกจากระบบ</button>
+      </div>
     </div>
 
     <div class="my-profile-card card">
@@ -83,10 +86,13 @@
     document.getElementById('actPeer').href = `/c/${cid}/vote`;
     document.getElementById('actAssign').href = `/c/${cid}/assignments`;
     document.getElementById('actDash').href = `/c/${cid}/dashboard`;
+    document.getElementById('profileLink').href = `/c/${cid}/profile`;
+
+    const userIdent = encodeURIComponent(user.phone || user.studentId);
 
     async function load() {
       try {
-        const res = await fetch(`/api/c/${cid}/feed/${encodeURIComponent(user.studentId)}`);
+        const res = await fetch(`/api/c/${cid}/feed/${userIdent}`);
         if (res.status === 404) {
           localStorage.removeItem(userKey);
           window.location.href = `/c/${cid}`;
@@ -167,8 +173,9 @@
       const photo = m.selfie
         ? `<img src="${escapeHtml(m.selfie)}" alt="" />`
         : `<div class="no-photo">?</div>`;
+      const idText = m.studentId || m.phone || '';
       return `
-        <div class="${cls.join(' ')}" title="${escapeHtml(m.studentId)} ${escapeHtml(m.fullName || m.name)}">
+        <div class="${cls.join(' ')}" title="${escapeHtml(idText)} ${escapeHtml(m.fullName || m.name)}">
           <div class="mp-photo">${photo}</div>
           ${!small ? `<div class="mp-name">${escapeHtml(m.name)}</div>` : ''}
         </div>

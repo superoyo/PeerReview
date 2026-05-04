@@ -26,6 +26,7 @@ app.get('/admin', sendPage('admin.html'));
 app.get('/c/:cid', sendPage('c-register.html'));
 app.get('/c/:cid/selfie', sendPage('selfie.html'));
 app.get('/c/:cid/feed', sendPage('feed.html'));
+app.get('/c/:cid/profile', sendPage('profile.html'));
 app.get('/c/:cid/vote', sendPage('vote.html'));
 app.get('/c/:cid/assignments', sendPage('assignments.html'));
 app.get('/c/:cid/dashboard', sendPage('dashboard.html'));
@@ -103,22 +104,47 @@ function pickBalancedGroup(classroomId, validGroups) {
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
+function normalizePhone(s) {
+  return String(s || '').replace(/[^\d+]/g, '').trim();
+}
+
+// Check if a phone is already registered in this classroom
+app.post('/api/c/:cid/check-phone', loadClassroom, (req, res) => {
+  const phone = normalizePhone(req.body && req.body.phone);
+  if (!phone) return res.status(400).json({ error: 'กรุณากรอกเบอร์มือถือ' });
+  const u = db.getUserByPhone(req.classroom.id, phone);
+  if (u) {
+    res.json({ exists: true, user: { phone: u.phone, firstName: u.firstName, lastName: u.lastName, nickname: u.nickname, studentId: u.studentId, group: u.group } });
+  } else {
+    res.json({ exists: false });
+  }
+});
+
 app.post('/api/c/:cid/register', loadClassroom, (req, res) => {
   const c = req.classroom;
   if (!c.registrationOpen) {
     return res.status(403).json({ error: 'ห้องเรียนนี้ปิดรับลงทะเบียน' });
   }
-  const { studentId, firstName, lastName, nickname, group } = req.body || {};
-  if (!studentId || !firstName || !lastName) {
-    return res.status(400).json({ error: 'กรุณากรอกชื่อ นามสกุล และรหัสนักศึกษา' });
+  const { phone, studentId, firstName, lastName, nickname, group, enrollCode } = req.body || {};
+  const ph = normalizePhone(phone);
+  if (!ph) return res.status(400).json({ error: 'กรุณากรอกเบอร์มือถือ' });
+  if (!enrollCode) return res.status(400).json({ error: 'กรุณากรอกรหัสคลาส 4 หลัก' });
+  if (String(enrollCode).trim() !== c.enrollCode) {
+    return res.status(403).json({ error: 'รหัสคลาสไม่ถูกต้อง' });
   }
-  const sid = String(studentId).trim();
-  const fn = String(firstName).trim();
-  const ln = String(lastName).trim();
+
+  const existing = db.getUserByPhone(c.id, ph);
+  if (existing) {
+    return res.json({ ok: true, user: existing, message: 'เข้าสู่ระบบสำเร็จ' });
+  }
+
+  // New registration: optional fields
+  const sid = String(studentId || '').trim();
+  const fn = String(firstName || '').trim();
+  const ln = String(lastName || '').trim();
   const nick = String(nickname || '').trim();
   const grpStr = group ? String(group).trim() : '';
 
-  // Determine group based on assignment mode
   let assignedGroup = '';
   if (c.peerReviewEnabled) {
     const mode = c.groupAssignmentMode || 'self';
@@ -129,45 +155,59 @@ app.post('/api/c/:cid/register', loadClassroom, (req, res) => {
       }
       assignedGroup = grpStr;
     } else if (mode === 'random') {
-      // ignore client input, randomly assign balanced
       assignedGroup = pickBalancedGroup(c.id, c.validGroups);
     } else if (mode === 'admin') {
-      // leave unassigned
       assignedGroup = '';
     }
   }
 
-  const existing = db.getUser(c.id, sid);
-  if (existing) {
-    if ((existing.firstName === fn || (!existing.firstName && existing.name && existing.name.split(/\s+/)[0] === fn))
-        && (existing.lastName === ln || (!existing.lastName && existing.name && existing.name.split(/\s+/).slice(1).join(' ') === ln))) {
-      // Same person logging in again — only update group if mode='self' and provided
-      if (c.peerReviewEnabled && c.groupAssignmentMode === 'self' && grpStr && grpStr !== existing.group) {
-        db.setUserGroup(c.id, sid, grpStr);
+  try {
+    const user = db.addUser(c.id, {
+      phone: ph,
+      studentId: sid,
+      firstName: fn,
+      lastName: ln,
+      nickname: nick,
+      group: assignedGroup,
+      registeredAt: new Date().toISOString()
+    });
+    let message = 'ลงทะเบียนสำเร็จ';
+    if (c.peerReviewEnabled) {
+      if (c.groupAssignmentMode === 'random' && assignedGroup) {
+        message = `ลงทะเบียนสำเร็จ ระบบสุ่มให้คุณอยู่กลุ่ม ${assignedGroup}`;
+      } else if (c.groupAssignmentMode === 'admin') {
+        message = 'ลงทะเบียนสำเร็จ ผู้สอนจะกำหนดกลุ่มให้ภายหลัง';
       }
-      const fresh = db.getUser(c.id, sid);
-      return res.json({ ok: true, user: fresh, message: 'เข้าสู่ระบบสำเร็จ' });
     }
-    return res.status(409).json({ error: 'รหัสนักศึกษานี้ถูกใช้ลงทะเบียนแล้วด้วยข้อมูลอื่น' });
+    res.json({ ok: true, user, message });
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE') || String(e.message).includes('unique')) {
+      return res.status(409).json({ error: 'เบอร์มือถือนี้ลงทะเบียนแล้วในคลาสนี้' });
+    }
+    res.status(500).json({ error: e.message });
   }
+});
 
-  const user = db.addUser(c.id, {
-    studentId: sid,
-    firstName: fn,
-    lastName: ln,
-    nickname: nick,
-    group: assignedGroup,
-    registeredAt: new Date().toISOString()
+// Update profile fields
+app.patch('/api/c/:cid/me/:phone', loadClassroom, (req, res) => {
+  const u = db.getUser(req.classroom.id, req.params.phone);
+  if (!u) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+  const fields = req.body || {};
+  // Only allow specific fields
+  const allowed = {};
+  ['firstName', 'lastName', 'nickname', 'studentId'].forEach(k => {
+    if (fields[k] !== undefined) allowed[k] = String(fields[k]).trim();
   });
-  let message = 'ลงทะเบียนสำเร็จ';
-  if (c.peerReviewEnabled) {
-    if (c.groupAssignmentMode === 'random' && assignedGroup) {
-      message = `ลงทะเบียนสำเร็จ ระบบสุ่มให้คุณอยู่กลุ่ม ${assignedGroup}`;
-    } else if (c.groupAssignmentMode === 'admin') {
-      message = 'ลงทะเบียนสำเร็จ ผู้สอนจะกำหนดกลุ่มให้ภายหลัง';
+  // Group can only be changed when mode=self
+  if (fields.group !== undefined && req.classroom.peerReviewEnabled && req.classroom.groupAssignmentMode === 'self') {
+    const g = String(fields.group).trim();
+    if (g && !req.classroom.validGroups.includes(g)) {
+      return res.status(400).json({ error: `กลุ่มต้องเป็น ${req.classroom.validGroups.join(', ')}` });
     }
+    allowed.group = g;
   }
-  res.json({ ok: true, user, message });
+  const updated = db.updateUser(req.classroom.id, req.params.phone, allowed);
+  res.json({ ok: true, user: updated });
 });
 
 app.post('/api/c/:cid/selfie', loadClassroom, (req, res) => {
@@ -231,15 +271,17 @@ app.get('/api/c/:cid/peers/:studentId', loadClassroom, (req, res) => {
   if (!me) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
   if (!req.classroom.votingOpen) return res.status(403).json({ error: 'ระบบยังไม่เปิดให้โหวต' });
   const peers = db.getUsers(req.classroom.id)
-    .filter(u => u.group === me.group && u.studentId !== me.studentId)
-    .sort((a, b) => a.studentId.localeCompare(b.studentId))
+    .filter(u => u.group === me.group && u.id !== me.id)
+    .sort((a, b) => (a.studentId || a.phone || '').localeCompare(b.studentId || b.phone || ''))
     .map(p => ({
       studentId: p.studentId,
+      phone: p.phone,
       name: displayName(p),
       fullName: fullName(p),
       selfie: p.selfie || null
     }));
-  res.json({ me, peers, alreadyVoted: db.hasVoted(req.classroom.id, me.studentId) });
+  const voterId = me.phone || me.studentId;
+  res.json({ me, peers, alreadyVoted: db.hasVoted(req.classroom.id, voterId) });
 });
 
 app.post('/api/c/:cid/vote', loadClassroom, (req, res) => {
@@ -249,25 +291,27 @@ app.post('/api/c/:cid/vote', loadClassroom, (req, res) => {
   if (!c.votingOpen) return res.status(403).json({ error: 'ระบบยังไม่เปิดให้โหวต' });
   const voter = db.getUser(c.id, voterId);
   if (!voter) return res.status(404).json({ error: 'ไม่พบผู้โหวต' });
-  if (db.hasVoted(c.id, voterId)) return res.status(409).json({ error: 'คุณยืนยันคะแนนไปแล้ว' });
-  const peers = db.getUsers(c.id).filter(u => u.group === voter.group && u.studentId !== voterId);
-  const peerIds = new Set(peers.map(p => p.studentId));
+  const voterKey = voter.phone || voter.studentId;
+  if (db.hasVoted(c.id, voterKey)) return res.status(409).json({ error: 'คุณยืนยันคะแนนไปแล้ว' });
+  const peers = db.getUsers(c.id).filter(u => u.group === voter.group && u.id !== voter.id);
+  const peerKeys = new Set();
+  peers.forEach(p => { if (p.phone) peerKeys.add(p.phone); if (p.studentId) peerKeys.add(p.studentId); });
   for (const s of scores) {
-    if (!peerIds.has(s.targetId)) return res.status(400).json({ error: `ไม่พบ ${s.targetId} ในกลุ่ม` });
+    if (!peerKeys.has(s.targetId)) return res.status(400).json({ error: `ไม่พบ ${s.targetId} ในกลุ่ม` });
     if (!Number.isInteger(s.score) || s.score < 1 || s.score > 5) {
       return res.status(400).json({ error: 'คะแนนต้องเป็น 1-5' });
     }
   }
   if (scores.length !== peers.length) return res.status(400).json({ error: 'กรุณาโหวตให้ครบทุกคน' });
   const ts = new Date().toISOString();
-  db.addVotes(c.id, voterId, voter.group, scores, ts);
+  db.addVotes(c.id, voterKey, voter.group, scores, ts);
   const validIds = c.classDates.map(d => d.id);
   if (Array.isArray(attendance)) {
-    db.setAttendance(c.id, voterId, validIds.filter(id => attendance.includes(id)), ts, true);
+    db.setAttendance(c.id, voterKey, validIds.filter(id => attendance.includes(id)), ts, true);
   } else if (!Array.isArray(voter.attendance)) {
-    db.setAttendance(c.id, voterId, [], ts, true);
+    db.setAttendance(c.id, voterKey, [], ts, true);
   } else {
-    db.setAttendance(c.id, voterId, voter.attendance, ts, true);
+    db.setAttendance(c.id, voterKey, voter.attendance, ts, true);
   }
   res.json({ ok: true, message: 'บันทึกคะแนนและการเข้าเรียนเรียบร้อย' });
 });
@@ -281,10 +325,11 @@ app.get('/api/c/:cid/dashboard', loadClassroom, (req, res) => {
   let votedCount = 0;
   users.forEach(u => {
     if (!grouped[u.group]) grouped[u.group] = [];
-    const hasVoted = voters.has(u.studentId);
+    const hasVoted = voters.has(u.phone) || voters.has(u.studentId);
     if (hasVoted) votedCount++;
     grouped[u.group].push({
       studentId: u.studentId,
+      phone: u.phone,
       name: displayName(u),
       fullName: fullName(u),
       selfie: u.selfie || null,
@@ -352,6 +397,11 @@ app.post('/api/admin/classrooms', requireAdmin, (req, res) => {
     groupAssignmentMode: mode
   });
   res.json({ ok: true, classroom: c });
+});
+
+app.post('/api/admin/classrooms/:cid/regenerate-enroll-code', requireAdmin, loadClassroom, (req, res) => {
+  const code = db.regenerateEnrollCode(req.classroom.id);
+  res.json({ ok: true, enrollCode: code });
 });
 
 app.patch('/api/admin/classrooms/:cid/groups', requireAdmin, loadClassroom, (req, res) => {
@@ -438,7 +488,8 @@ app.get('/api/c/:cid/admin/votes/:studentId', requireAdmin, loadClassroom, (req,
   const c = req.classroom;
   const target = db.getUser(c.id, req.params.studentId);
   if (!target) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
-  const received = db.getVotesForTarget(c.id, target.studentId);
+  const allVotes = db.getAllVotes(c.id);
+  const received = allVotes.filter(v => v.targetId === target.phone || v.targetId === target.studentId);
   const detailed = received.map(v => {
     const voter = db.getUser(c.id, v.voterId);
     return {
@@ -463,11 +514,12 @@ app.get('/api/c/:cid/admin/scores', requireAdmin, loadClassroom, (req, res) => {
   const users = db.getUsers(c.id);
   const allVotes = db.getAllVotes(c.id);
   const result = users.map(u => {
-    const received = allVotes.filter(v => v.targetId === u.studentId).map(v => v.score);
+    const received = allVotes.filter(v => v.targetId === u.phone || v.targetId === u.studentId).map(v => v.score);
     const mode = calcMode(received);
     const att = Array.isArray(u.attendance) ? u.attendance : [];
     return {
       studentId: u.studentId,
+      phone: u.phone,
       name: displayName(u),
       fullName: fullName(u),
       nickname: u.nickname,
@@ -482,7 +534,7 @@ app.get('/api/c/:cid/admin/scores', requireAdmin, loadClassroom, (req, res) => {
     };
   }).sort((a, b) => {
     if (a.group !== b.group) return (a.group || '').localeCompare(b.group || '');
-    return a.studentId.localeCompare(b.studentId);
+    return (a.studentId || a.phone || '').localeCompare(b.studentId || b.phone || '');
   });
   res.json({
     scores: result,
@@ -520,21 +572,21 @@ app.get('/api/c/:cid/admin/export', requireAdmin, loadClassroom, (req, res) => {
   const allVotes = db.getAllVotes(c.id);
   const dateHeaders = c.classDates.map(d => d.label);
   const rows = [[
-    'StudentID', 'FirstName', 'LastName', 'Nickname', 'Group',
+    'Phone', 'StudentID', 'FirstName', 'LastName', 'Nickname', 'Group',
     'VoteCount', 'ModeScore', 'AllScores',
     ...dateHeaders, 'AttendanceCount', 'AttendanceScore(%)', 'SelfieURL'
   ]];
   const sorted = [...users].sort((a, b) => {
     if (a.group !== b.group) return (a.group || '').localeCompare(b.group || '');
-    return a.studentId.localeCompare(b.studentId);
+    return (a.studentId || a.phone || '').localeCompare(b.studentId || b.phone || '');
   });
   sorted.forEach(u => {
-    const received = allVotes.filter(v => v.targetId === u.studentId).map(v => v.score);
+    const received = allVotes.filter(v => v.targetId === u.phone || v.targetId === u.studentId).map(v => v.score);
     const mode = calcMode(received);
     const att = Array.isArray(u.attendance) ? u.attendance : [];
     const attCols = c.classDates.map(d => att.includes(d.id) ? 1 : 0);
     rows.push([
-      u.studentId, u.firstName || '', u.lastName || '', u.nickname || '', u.group || '',
+      u.phone || '', u.studentId || '', u.firstName || '', u.lastName || '', u.nickname || '', u.group || '',
       received.length, mode.display, received.join('|'),
       ...attCols,
       att.length, att.length * ATTENDANCE_PERCENT_PER_DAY,

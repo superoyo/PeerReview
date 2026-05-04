@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>โปรไฟล์</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="container">
+    <a href="" id="backLink" class="hint" style="text-decoration:none;">← กลับหน้าห้องเรียน</a>
+    <h1 style="margin-top:6px;">โปรไฟล์ของฉัน</h1>
+    <p class="subtitle">อัปเดตข้อมูลของคุณในคลาสนี้</p>
+
+    <div id="cInfo" class="user-info" style="margin-bottom:18px;">-</div>
+
+    <form id="profileForm">
+      <label>เบอร์มือถือ <span class="opt">(แก้ไม่ได้)</span></label>
+      <input type="text" id="phone" disabled />
+
+      <label for="studentId">รหัสนักศึกษา</label>
+      <input type="text" id="studentId" />
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div>
+          <label for="firstName">ชื่อ</label>
+          <input type="text" id="firstName" />
+        </div>
+        <div>
+          <label for="lastName">นามสกุล</label>
+          <input type="text" id="lastName" />
+        </div>
+      </div>
+
+      <label for="nickname">ชื่อเล่น</label>
+      <input type="text" id="nickname" />
+
+      <div id="groupSection" style="display:none;">
+        <label>กลุ่ม</label>
+        <div class="group-buttons" id="groupButtons"></div>
+        <input type="hidden" id="group" />
+        <p class="hint" id="groupHint" style="margin-top:6px;"></p>
+      </div>
+
+      <button type="submit" class="primary">บันทึก</button>
+    </form>
+
+    <div style="margin-top: 18px; text-align: center;">
+      <a href="" id="selfieLink" class="secondary" style="display:inline-block; padding:10px 20px; border-radius:8px; background:#f0f2f8; color:#444; text-decoration:none; font-size:14px;">📷 ถ่าย Selfie ใหม่</a>
+    </div>
+
+    <div id="message"></div>
+  </div>
+
+  <script>
+    const cid = window.location.pathname.split('/')[2];
+    const userKey = `pr_user_${cid}`;
+    const user = JSON.parse(localStorage.getItem(userKey) || 'null');
+    if (!user) window.location.href = `/c/${cid}`;
+    document.getElementById('backLink').href = `/c/${cid}/feed`;
+    document.getElementById('selfieLink').href = `/c/${cid}/selfie`;
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+    const msg = document.getElementById('message');
+    const userIdent = encodeURIComponent(user.phone || user.studentId);
+
+    let classroom = null;
+
+    async function loadAll() {
+      const [r1, r2] = await Promise.all([
+        fetch(`/api/c/${cid}`),
+        fetch(`/api/c/${cid}/me/${userIdent}`)
+      ]);
+      if (!r1.ok || !r2.ok) {
+        msg.innerHTML = `<div class="message error">โหลดข้อมูลไม่ได้</div>`;
+        return;
+      }
+      classroom = (await r1.json()).classroom;
+      const me = (await r2.json()).user;
+      Object.assign(user, me);
+      localStorage.setItem(userKey, JSON.stringify(user));
+
+      document.getElementById('cInfo').innerHTML =
+        `<b>${escapeHtml(classroom.code)}</b> — ${escapeHtml(classroom.name)}`;
+      document.getElementById('phone').value = me.phone || '';
+      document.getElementById('studentId').value = me.studentId || '';
+      document.getElementById('firstName').value = me.firstName || '';
+      document.getElementById('lastName').value = me.lastName || '';
+      document.getElementById('nickname').value = me.nickname || '';
+
+      if (classroom.peerReviewEnabled) {
+        const mode = classroom.groupAssignmentMode || 'self';
+        const sec = document.getElementById('groupSection');
+        sec.style.display = '';
+        const hint = document.getElementById('groupHint');
+        if (mode === 'self') {
+          hint.textContent = 'คุณเปลี่ยนกลุ่มได้';
+          const buttons = document.getElementById('groupButtons');
+          buttons.innerHTML = classroom.validGroups.map(g => `
+            <button type="button" class="group-btn ${me.group === g ? 'selected' : ''}" data-group="${escapeHtml(g)}">กลุ่ม ${escapeHtml(g)}</button>
+          `).join('');
+          document.getElementById('group').value = me.group || '';
+          buttons.querySelectorAll('.group-btn').forEach(btn => {
+            btn.onclick = () => {
+              buttons.querySelectorAll('.group-btn').forEach(b => b.classList.remove('selected'));
+              btn.classList.add('selected');
+              document.getElementById('group').value = btn.dataset.group;
+            };
+          });
+        } else {
+          hint.innerHTML = `กลุ่มปัจจุบัน: <b>${me.group ? `กลุ่ม ${escapeHtml(me.group)}` : 'ยังไม่มี'}</b> · ${mode === 'random' ? 'ระบบสุ่ม' : 'ผู้สอนกำหนด'} (แก้ไม่ได้ในหน้านี้)`;
+          document.getElementById('groupButtons').innerHTML = '';
+        }
+      }
+    }
+
+    document.getElementById('profileForm').onsubmit = async (e) => {
+      e.preventDefault();
+      msg.innerHTML = '';
+      const payload = {
+        studentId: document.getElementById('studentId').value.trim(),
+        firstName: document.getElementById('firstName').value.trim(),
+        lastName: document.getElementById('lastName').value.trim(),
+        nickname: document.getElementById('nickname').value.trim()
+      };
+      if (classroom && classroom.peerReviewEnabled && classroom.groupAssignmentMode === 'self') {
+        payload.group = document.getElementById('group').value;
+      }
+      try {
+        const res = await fetch(`/api/c/${cid}/me/${userIdent}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.innerHTML = `<div class="message error">${escapeHtml(data.error)}</div>`;
+          return;
+        }
+        Object.assign(user, data.user);
+        localStorage.setItem(userKey, JSON.stringify(user));
+        msg.innerHTML = `<div class="message success">บันทึกเรียบร้อย</div>`;
+      } catch (e) {
+        msg.innerHTML = `<div class="message error">${escapeHtml(e.message)}</div>`;
+      }
+    };
+
+    loadAll();
+  </script>
+</body>
+</html>

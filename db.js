@@ -39,12 +39,23 @@ db.exec(`
     groupAssignmentMode TEXT DEFAULT 'self'
   );
 `);
-// Migrate: add groupAssignmentMode column for existing classrooms tables
+// Migrate: add columns to existing classrooms tables
+function gen4digit() {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
 try {
   const ccols = db.prepare("PRAGMA table_info(classrooms)").all().map(c => c.name);
   if (!ccols.includes('groupAssignmentMode')) {
     db.exec(`ALTER TABLE classrooms ADD COLUMN groupAssignmentMode TEXT DEFAULT 'self'`);
     db.exec(`UPDATE classrooms SET groupAssignmentMode = 'self' WHERE groupAssignmentMode IS NULL`);
+  }
+  if (!ccols.includes('enrollCode')) {
+    db.exec(`ALTER TABLE classrooms ADD COLUMN enrollCode TEXT`);
+    // Generate codes for existing classrooms
+    const empties = db.prepare(`SELECT id FROM classrooms WHERE enrollCode IS NULL OR enrollCode = ''`).all();
+    empties.forEach(c => {
+      db.prepare(`UPDATE classrooms SET enrollCode = ? WHERE id = ?`).run(gen4digit(), c.id);
+    });
   }
 } catch (e) { /* ignore */ }
 
@@ -53,13 +64,15 @@ function migrateSchema() {
   const userCols = db.prepare("PRAGMA table_info(users)").all();
   const userTableExists = userCols.length > 0;
   const userHasCid = userCols.some(c => c.name === 'classroomId');
+  const userHasPhone = userCols.some(c => c.name === 'phone');
 
   if (!userTableExists) {
     db.exec(`
       CREATE TABLE users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         classroomId TEXT NOT NULL,
-        studentId TEXT NOT NULL,
+        phone TEXT,
+        studentId TEXT,
         firstName TEXT,
         lastName TEXT,
         nickname TEXT,
@@ -70,8 +83,7 @@ function migrateSchema() {
         selfieAt TEXT,
         attendance TEXT,
         attendanceUpdatedAt TEXT,
-        attendanceSubmittedAt TEXT,
-        UNIQUE(classroomId, studentId)
+        attendanceSubmittedAt TEXT
       );
     `);
   } else if (!userHasCid) {
@@ -80,7 +92,8 @@ function migrateSchema() {
       CREATE TABLE users_new (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         classroomId TEXT NOT NULL,
-        studentId TEXT NOT NULL,
+        phone TEXT,
+        studentId TEXT,
         firstName TEXT,
         lastName TEXT,
         nickname TEXT,
@@ -91,16 +104,19 @@ function migrateSchema() {
         selfieAt TEXT,
         attendance TEXT,
         attendanceUpdatedAt TEXT,
-        attendanceSubmittedAt TEXT,
-        UNIQUE(classroomId, studentId)
+        attendanceSubmittedAt TEXT
       );
     `);
     db.exec(`
-      INSERT INTO users_new (classroomId, studentId, name, groupNum, registeredAt, selfie, selfieAt, attendance, attendanceUpdatedAt, attendanceSubmittedAt)
-      SELECT 'ge-207', studentId, name, groupNum, registeredAt, selfie, selfieAt, attendance, attendanceUpdatedAt, attendanceSubmittedAt FROM users;
+      INSERT INTO users_new (classroomId, phone, studentId, name, groupNum, registeredAt, selfie, selfieAt, attendance, attendanceUpdatedAt, attendanceSubmittedAt)
+      SELECT 'ge-207', studentId, studentId, name, groupNum, registeredAt, selfie, selfieAt, attendance, attendanceUpdatedAt, attendanceSubmittedAt FROM users;
     `);
     db.exec(`DROP TABLE users;`);
     db.exec(`ALTER TABLE users_new RENAME TO users;`);
+  } else if (!userHasPhone) {
+    // Existing users table with classroomId but no phone — add column and copy from studentId
+    db.exec(`ALTER TABLE users ADD COLUMN phone TEXT`);
+    db.exec(`UPDATE users SET phone = studentId WHERE (phone IS NULL OR phone = '') AND studentId IS NOT NULL AND studentId != ''`);
   }
 
   const voteCols = db.prepare("PRAGMA table_info(votes)").all();
@@ -129,6 +145,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_votes_classroom ON votes(classroomId);
   CREATE INDEX IF NOT EXISTS idx_votes_voter ON votes(voterId);
   CREATE INDEX IF NOT EXISTS idx_votes_target ON votes(targetId);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_classroom_phone
+    ON users(classroomId, phone) WHERE phone IS NOT NULL AND phone != '';
 `);
 
 db.exec(`
@@ -172,9 +190,10 @@ function ensureDefaultClassroom() {
     const r = db.prepare(`SELECT value FROM settings WHERE key = 'votingOpen'`).get();
     if (r) oldVotingOpen = r.value === '1' ? 1 : 0;
   } catch (e) {}
+  const code = gen4digit();
   db.prepare(`INSERT INTO classrooms
-    (id, code, name, description, university, createdAt, registrationOpen, votingOpen, peerReviewEnabled, classDates, attendancePercent, validGroups)
-    VALUES (?, ?, ?, ?, ?, ?, 1, ?, 1, ?, 5, ?)`).run(
+    (id, code, name, description, university, createdAt, registrationOpen, votingOpen, peerReviewEnabled, classDates, attendancePercent, validGroups, enrollCode)
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?, 1, ?, 5, ?, ?)`).run(
     'ge-207',
     'GE 207',
     'รายวิชา GE 207',
@@ -183,9 +202,10 @@ function ensureDefaultClassroom() {
     new Date().toISOString(),
     oldVotingOpen,
     JSON.stringify(DEFAULT_CLASS_DATES),
-    JSON.stringify(DEFAULT_GROUPS)
+    JSON.stringify(DEFAULT_GROUPS),
+    code
   );
-  console.log('Created default classroom: GE 207 (id=ge-207)');
+  console.log(`Created default classroom: GE 207 (id=ge-207, enrollCode=${code})`);
 }
 ensureDefaultClassroom();
 
@@ -240,7 +260,8 @@ function rowToClassroom(r) {
     classDates: r.classDates ? JSON.parse(r.classDates) : DEFAULT_CLASS_DATES,
     attendancePercent: r.attendancePercent ?? 5,
     validGroups: r.validGroups ? JSON.parse(r.validGroups) : DEFAULT_GROUPS,
-    groupAssignmentMode: r.groupAssignmentMode || 'self'
+    groupAssignmentMode: r.groupAssignmentMode || 'self',
+    enrollCode: r.enrollCode || ''
   };
 }
 
@@ -257,7 +278,8 @@ function rowToUser(r) {
   const u = {
     id: r.id,
     classroomId: r.classroomId,
-    studentId: r.studentId,
+    phone: r.phone || '',
+    studentId: r.studentId || '',
     firstName,
     lastName,
     nickname: r.nickname || '',
@@ -325,6 +347,7 @@ module.exports = {
   SUBMISSIONS_DIR,
   DEFAULT_CLASS_DATES, DEFAULT_GROUPS,
   slugify,
+  gen4digit,
 
   // ===== Classrooms =====
   getClassrooms() {
@@ -338,8 +361,8 @@ module.exports = {
   },
   createClassroom(c) {
     db.prepare(`INSERT INTO classrooms
-      (id, code, name, description, university, createdAt, registrationOpen, votingOpen, peerReviewEnabled, classDates, attendancePercent, validGroups, groupAssignmentMode)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      (id, code, name, description, university, createdAt, registrationOpen, votingOpen, peerReviewEnabled, classDates, attendancePercent, validGroups, groupAssignmentMode, enrollCode)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       c.id, c.code, c.name,
       c.description || '',
       c.university || 'มหาวิทยาลัยกรุงเทพ',
@@ -350,15 +373,21 @@ module.exports = {
       JSON.stringify(c.classDates || DEFAULT_CLASS_DATES),
       c.attendancePercent ?? 5,
       JSON.stringify(c.validGroups || DEFAULT_GROUPS),
-      c.groupAssignmentMode || 'self'
+      c.groupAssignmentMode || 'self',
+      c.enrollCode || gen4digit()
     );
     return this.getClassroom(c.id);
+  },
+  regenerateEnrollCode(id) {
+    const code = gen4digit();
+    db.prepare('UPDATE classrooms SET enrollCode = ? WHERE id = ?').run(code, id);
+    return code;
   },
   updateClassroom(id, fields) {
     const updates = [];
     const values = [];
     const intFields = ['registrationOpen', 'votingOpen', 'peerReviewEnabled', 'attendancePercent'];
-    const strFields = ['code', 'name', 'description', 'university', 'groupAssignmentMode'];
+    const strFields = ['code', 'name', 'description', 'university', 'groupAssignmentMode', 'enrollCode'];
     strFields.forEach(k => {
       if (fields[k] !== undefined) { updates.push(`${k} = ?`); values.push(String(fields[k])); }
     });
@@ -396,34 +425,61 @@ module.exports = {
   getUsers(classroomId) {
     return db.prepare('SELECT * FROM users WHERE classroomId = ?').all(classroomId).map(rowToUser);
   },
-  getUser(classroomId, studentId) {
-    return rowToUser(db.prepare('SELECT * FROM users WHERE classroomId = ? AND studentId = ?').get(classroomId, studentId));
+  // Lookup by phone OR studentId (whichever matches first)
+  getUser(classroomId, key) {
+    if (!key) return null;
+    return rowToUser(db.prepare(
+      'SELECT * FROM users WHERE classroomId = ? AND (phone = ? OR studentId = ?)'
+    ).get(classroomId, key, key));
+  },
+  getUserByPhone(classroomId, phone) {
+    if (!phone) return null;
+    return rowToUser(db.prepare('SELECT * FROM users WHERE classroomId = ? AND phone = ?').get(classroomId, phone));
   },
   addUser(classroomId, u) {
-    db.prepare(`INSERT INTO users (classroomId, studentId, firstName, lastName, nickname, name, groupNum, registeredAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      classroomId, u.studentId,
+    db.prepare(`INSERT INTO users (classroomId, phone, studentId, firstName, lastName, nickname, name, groupNum, registeredAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      classroomId, u.phone || '', u.studentId || '',
       u.firstName || '', u.lastName || '', u.nickname || '',
       u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim(),
       u.group || '', u.registeredAt
     );
-    return this.getUser(classroomId, u.studentId);
+    return this.getUser(classroomId, u.phone || u.studentId);
   },
-  setUserGroup(classroomId, studentId, group) {
-    db.prepare('UPDATE users SET groupNum = ? WHERE classroomId = ? AND studentId = ?')
-      .run(group || '', classroomId, studentId);
+  updateUser(classroomId, key, fields) {
+    const sets = [], vals = [];
+    ['firstName', 'lastName', 'nickname', 'studentId'].forEach(k => {
+      if (fields[k] !== undefined) { sets.push(`${k} = ?`); vals.push(String(fields[k])); }
+    });
+    if (fields.firstName !== undefined || fields.lastName !== undefined) {
+      const u = this.getUser(classroomId, key);
+      if (u) {
+        const fn = fields.firstName !== undefined ? fields.firstName : u.firstName;
+        const ln = fields.lastName !== undefined ? fields.lastName : u.lastName;
+        sets.push('name = ?'); vals.push(`${fn} ${ln}`.trim());
+      }
+    }
+    if (fields.group !== undefined) { sets.push('groupNum = ?'); vals.push(String(fields.group || '')); }
+    if (!sets.length) return this.getUser(classroomId, key);
+    vals.push(classroomId, key, key);
+    db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE classroomId = ? AND (phone = ? OR studentId = ?)`).run(...vals);
+    return this.getUser(classroomId, key);
   },
-  setSelfie(classroomId, studentId, selfie, ts) {
-    db.prepare('UPDATE users SET selfie = ?, selfieAt = ? WHERE classroomId = ? AND studentId = ?')
-      .run(selfie, ts, classroomId, studentId);
+  setUserGroup(classroomId, key, group) {
+    db.prepare('UPDATE users SET groupNum = ? WHERE classroomId = ? AND (phone = ? OR studentId = ?)')
+      .run(group || '', classroomId, key, key);
   },
-  setAttendance(classroomId, studentId, attendance, ts, submitted = false) {
+  setSelfie(classroomId, key, selfie, ts) {
+    db.prepare('UPDATE users SET selfie = ?, selfieAt = ? WHERE classroomId = ? AND (phone = ? OR studentId = ?)')
+      .run(selfie, ts, classroomId, key, key);
+  },
+  setAttendance(classroomId, key, attendance, ts, submitted = false) {
     if (submitted) {
-      db.prepare('UPDATE users SET attendance = ?, attendanceSubmittedAt = ? WHERE classroomId = ? AND studentId = ?')
-        .run(JSON.stringify(attendance), ts, classroomId, studentId);
+      db.prepare('UPDATE users SET attendance = ?, attendanceSubmittedAt = ? WHERE classroomId = ? AND (phone = ? OR studentId = ?)')
+        .run(JSON.stringify(attendance), ts, classroomId, key, key);
     } else {
-      db.prepare('UPDATE users SET attendance = ?, attendanceUpdatedAt = ? WHERE classroomId = ? AND studentId = ?')
-        .run(JSON.stringify(attendance), ts, classroomId, studentId);
+      db.prepare('UPDATE users SET attendance = ?, attendanceUpdatedAt = ? WHERE classroomId = ? AND (phone = ? OR studentId = ?)')
+        .run(JSON.stringify(attendance), ts, classroomId, key, key);
     }
   },
 

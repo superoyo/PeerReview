@@ -195,12 +195,14 @@
               <span class="${c.registrationOpen ? 'open' : 'closed'}">${c.registrationOpen ? '● ลงทะเบียน เปิด' : '○ ลงทะเบียน ปิด'}</span>
               <span class="${c.votingOpen ? 'open' : 'closed'}">${c.votingOpen ? '● โหวต เปิด' : '○ โหวต ปิด'}</span>
               ${c.peerReviewEnabled ? `<span class="tag-pr">Peer Review · ${c.validGroups.length} กลุ่ม · ${modeLabel(c.groupAssignmentMode)}</span>` : ''}
+              <span class="enroll-pill" title="รหัส 4 หลัก สำหรับนักศึกษาเข้าคลาส">🔑 รหัสคลาส: <b>${escapeHtml(c.enrollCode || '----')}</b></span>
             </div>
           </div>
           <div class="cr-actions">
             <a href="/c/${escapeHtml(c.id)}/admin" class="primary" style="text-decoration:none;display:inline-block;padding:10px 18px;border-radius:8px;background:#667eea;color:#fff;font-size:14px;font-weight:500;">จัดการ</a>
             <a href="/c/${escapeHtml(c.id)}" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:10px 18px;border-radius:8px;background:#f0f2f8;color:#444;font-size:14px;">หน้าลงทะเบียน</a>
             <a href="/c/${escapeHtml(c.id)}/dashboard" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:10px 18px;border-radius:8px;background:#f0f2f8;color:#444;font-size:14px;">Dashboard</a>
+            <button class="secondary" data-regen="${escapeHtml(c.id)}">สุ่มรหัสคลาส</button>
             <button class="danger" data-del="${escapeHtml(c.id)}">ลบ</button>
           </div>
         </div>
@@ -210,6 +212,16 @@
           const id = b.dataset.del;
           if (!confirm(`ลบห้องเรียน "${id}" และข้อมูลทั้งหมด? การกระทำนี้ย้อนกลับไม่ได้`)) return;
           await authFetch(`/api/admin/classrooms/${id}`, { method: 'DELETE' });
+          await loadClassrooms();
+        };
+      });
+      el.querySelectorAll('button[data-regen]').forEach(b => {
+        b.onclick = async () => {
+          const id = b.dataset.regen;
+          if (!confirm(`สุ่มรหัสคลาสใหม่สำหรับ "${id}"? รหัสเดิมจะใช้ไม่ได้`)) return;
+          const r = await authFetch(`/api/admin/classrooms/${id}/regenerate-enroll-code`, { method: 'POST' });
+          const data = await r.json();
+          if (r.ok) alert(`รหัสคลาสใหม่: ${data.enrollCode}`);
           await loadClassrooms();
         };
       });

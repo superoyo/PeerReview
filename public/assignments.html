@@ -56,7 +56,7 @@
       }
       // For each assignment, fetch the user's submission
       const cards = await Promise.all(list.map(async a => {
-        const r = await fetch(`/api/c/${cid}/assignments/${a.id}/submission/${encodeURIComponent(user.studentId)}`);
+        const r = await fetch(`/api/c/${cid}/assignments/${a.id}/submission/${encodeURIComponent(user.phone || user.studentId)}`);
         const d = await r.json();
         return renderAssignment(d.assignment, d.submission, d.submitter);
       }));
@@ -135,7 +135,7 @@
           });
         }
         const payload = {
-          studentId: user.studentId,
+          studentId: user.phone || user.studentId,
           content: fd.get('content') || '',
           link: fd.get('link') || '',
           fileData, fileName

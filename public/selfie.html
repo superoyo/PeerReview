@@ -131,7 +131,7 @@
         const res = await fetch(`/api/c/${cid}/selfie`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ studentId: user.studentId, image: capturedDataUrl })
+          body: JSON.stringify({ studentId: user.phone || user.studentId, image: capturedDataUrl })
         });
         const data = await res.json();
         if (!res.ok) {

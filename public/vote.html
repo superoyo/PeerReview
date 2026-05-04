@@ -26,6 +26,8 @@
 
     document.getElementById('backLink').href = `/c/${cid}/feed`;
 
+    const userIdent = encodeURIComponent(user.phone || user.studentId);
+
     const userInfoEl = document.getElementById('userInfo');
     const contentEl = document.getElementById('content');
     const msgEl = document.getElementById('message');
@@ -70,7 +72,7 @@
 
     async function loadMe() {
       try {
-        const res = await fetch(`/api/c/${cid}/me/${encodeURIComponent(user.studentId)}`);
+        const res = await fetch(`/api/c/${cid}/me/${userIdent}`);
         if (res.status === 404) {
           localStorage.removeItem(userKey);
           window.location.href = `/c/${cid}`;
@@ -169,7 +171,7 @@
         const res = await fetch(`/api/c/${cid}/attendance`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ studentId: user.studentId, attendance: Array.from(attendance) })
+          body: JSON.stringify({ studentId: user.phone || user.studentId, attendance: Array.from(attendance) })
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -196,7 +198,7 @@
 
     async function loadPeers() {
       try {
-        const res = await fetch(`/api/c/${cid}/peers/${encodeURIComponent(user.studentId)}`);
+        const res = await fetch(`/api/c/${cid}/peers/${userIdent}`);
         const data = await res.json();
         if (!res.ok) {
           contentEl.innerHTML = `<div class="message error">${escapeHtml(data.error)}</div>`;
@@ -221,6 +223,8 @@
 
     function renderPeers() {
       const peersHtml = peers.map(p => {
+        const key = p.phone || p.studentId;
+        const idLabel = p.studentId || p.phone;
         const photo = p.selfie
           ? `<img src="${escapeHtml(p.selfie)}" alt="${escapeHtml(p.name)}" />`
           : `<div class="no-photo">?</div>`;
@@ -228,14 +232,14 @@
           <div class="card">
             <div class="peer-row">
               <div class="peer-photo${p.selfie ? ' clickable' : ''}"
-                   ${p.selfie ? `data-photo="${escapeHtml(p.selfie)}" data-name="${escapeHtml(p.fullName || p.name)} (${escapeHtml(p.studentId)})"` : ''}>
+                   ${p.selfie ? `data-photo="${escapeHtml(p.selfie)}" data-name="${escapeHtml(p.fullName || p.name)} (${escapeHtml(idLabel)})"` : ''}>
                 ${photo}
               </div>
               <div class="peer-info">
                 <div class="pname">${escapeHtml(p.name)}</div>
-                <div class="pid">${escapeHtml(p.studentId)}</div>
+                <div class="pid">${escapeHtml(idLabel)}</div>
               </div>
-              <div class="score-buttons" data-target="${escapeHtml(p.studentId)}">
+              <div class="score-buttons" data-target="${escapeHtml(key)}">
                 ${[1,2,3,4,5].map(n => `<button type="button" class="score-btn" data-score="${n}">${n}</button>`).join('')}
               </div>
             </div>
@@ -303,8 +307,8 @@
         : '(ไม่ได้ติ๊กวันใดเลย)';
       if (!confirm(`ยืนยันการให้คะแนน?\n\nวันที่มาเรียน: ${summary}\n\nเมื่อยืนยันแล้วไม่สามารถแก้ไขทั้งคะแนนและการเข้าเรียน`)) return;
       const payload = {
-        voterId: user.studentId,
-        scores: peers.map(p => ({ targetId: p.studentId, score: scores[p.studentId] })),
+        voterId: user.phone || user.studentId,
+        scores: peers.map(p => { const k = p.phone || p.studentId; return { targetId: k, score: scores[k] }; }),
         attendance: attendList
       };
       try {

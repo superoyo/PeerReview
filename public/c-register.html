@@ -10,35 +10,53 @@
   <div class="container">
     <div id="cInfo" class="user-info" style="margin-bottom: 18px;">กำลังโหลด...</div>
 
-    <h1>ลงทะเบียนเข้าห้องเรียน</h1>
-    <p class="subtitle">กรอกข้อมูลเพื่อเข้าสู่ระบบ</p>
+    <h1>ลงทะเบียน / เข้าสู่ระบบ</h1>
+    <p class="subtitle">กรอกเบอร์มือถือเพื่อเริ่ม</p>
 
-    <form id="registerForm">
-      <label for="studentId">รหัสนักศึกษา</label>
-      <input type="text" id="studentId" placeholder="เช่น 65010001" required />
+    <!-- Step 1: Phone -->
+    <form id="phoneForm">
+      <label for="phone">เบอร์มือถือ *</label>
+      <input type="tel" id="phone" inputmode="tel" placeholder="0812345678" required autocomplete="tel" />
+      <button type="submit" class="primary">ถัดไป</button>
+    </form>
+
+    <!-- Step 2: New user fields (hidden initially) -->
+    <form id="profileForm" style="display:none;">
+      <p class="hint" style="margin-top:8px;">📝 ครั้งแรกในคลาสนี้ — กรอกข้อมูลโปรไฟล์ (เว้นว่างได้)</p>
+
+      <label for="studentId">รหัสนักศึกษา <span class="opt">(ไม่บังคับ)</span></label>
+      <input type="text" id="studentId" placeholder="เช่น 65010001" />
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
         <div>
-          <label for="firstName">ชื่อ</label>
-          <input type="text" id="firstName" placeholder="ชื่อ" required />
+          <label for="firstName">ชื่อ <span class="opt">(ไม่บังคับ)</span></label>
+          <input type="text" id="firstName" />
         </div>
         <div>
-          <label for="lastName">นามสกุล</label>
-          <input type="text" id="lastName" placeholder="นามสกุล" required />
+          <label for="lastName">นามสกุล <span class="opt">(ไม่บังคับ)</span></label>
+          <input type="text" id="lastName" />
         </div>
       </div>
 
-      <label for="nickname">ชื่อเล่น</label>
-      <input type="text" id="nickname" placeholder="ชื่อเล่น" />
+      <label for="nickname">ชื่อเล่น <span class="opt">(ไม่บังคับ)</span></label>
+      <input type="text" id="nickname" />
 
       <div id="groupSection" style="display:none;">
-        <label id="groupLabel">เลือกกลุ่ม</label>
+        <label>เลือกกลุ่ม</label>
         <div class="group-buttons" id="groupButtons"></div>
         <input type="hidden" id="group" />
       </div>
       <div id="groupNote" class="hint" style="display:none; margin-top: 6px;"></div>
 
-      <button type="submit" class="primary">เข้าสู่ระบบ / ลงทะเบียน</button>
+      <button type="submit" class="primary">ถัดไป</button>
+    </form>
+
+    <!-- Step 3: Enroll code -->
+    <form id="codeForm" style="display:none;">
+      <p class="hint" style="margin-top:8px;">🔑 กรุณากรอกรหัสคลาส 4 หลัก ที่อาจารย์แจ้ง</p>
+      <label for="enrollCode">รหัสคลาส 4 หลัก *</label>
+      <input type="text" id="enrollCode" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="0000" required style="font-size: 22px; letter-spacing: 8px; text-align: center;" />
+      <button type="submit" class="primary">เข้าสู่คลาส</button>
     </form>
 
     <div id="message"></div>
@@ -51,12 +69,15 @@
   <script>
     const cid = window.location.pathname.split('/')[2];
     const cInfo = document.getElementById('cInfo');
-    const form = document.getElementById('registerForm');
+    const phoneForm = document.getElementById('phoneForm');
+    const profileForm = document.getElementById('profileForm');
+    const codeForm = document.getElementById('codeForm');
     const msg = document.getElementById('message');
     const groupSection = document.getElementById('groupSection');
     const groupButtons = document.getElementById('groupButtons');
     const groupInput = document.getElementById('group');
     let classroom = null;
+    let isReturning = false; // true if phone exists
 
     function escapeHtml(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
@@ -76,7 +97,7 @@
         const res = await fetch(`/api/c/${cid}`);
         if (!res.ok) {
           cInfo.innerHTML = `<span style="color:#c33;">ไม่พบห้องเรียน "${escapeHtml(cid)}"</span>`;
-          form.style.display = 'none';
+          phoneForm.style.display = 'none';
           return;
         }
         const data = await res.json();
@@ -87,39 +108,72 @@
           ${classroom.description ? `<div style="margin-top:6px; color:#666; font-size:13px;">${escapeHtml(classroom.description)}</div>` : ''}
         `;
         if (!classroom.registrationOpen) {
-          form.style.display = 'none';
-          msg.innerHTML = `<div class="message info">ห้องเรียนนี้ปิดรับลงทะเบียนแล้ว</div>`;
-          return;
-        }
-        if (classroom.peerReviewEnabled && classroom.validGroups && classroom.validGroups.length > 0) {
-          const mode = classroom.groupAssignmentMode || 'self';
-          const note = document.getElementById('groupNote');
-          if (mode === 'self') {
-            groupSection.style.display = '';
-            groupButtons.innerHTML = classroom.validGroups.map(g =>
-              `<button type="button" class="group-btn" data-group="${escapeHtml(g)}">กลุ่ม ${escapeHtml(g)}</button>`
-            ).join('');
-            groupButtons.querySelectorAll('.group-btn').forEach(btn => {
-              btn.onclick = () => {
-                groupButtons.querySelectorAll('.group-btn').forEach(b => b.classList.remove('selected'));
-                btn.classList.add('selected');
-                groupInput.value = btn.dataset.group;
-              };
-            });
-          } else if (mode === 'random') {
-            note.style.display = '';
-            note.innerHTML = `🎲 <b>ระบบจะสุ่มกลุ่มให้อัตโนมัติ</b> (มี ${classroom.validGroups.length} กลุ่ม) — กระจายเท่ากันโดยอัตโนมัติ`;
-          } else if (mode === 'admin') {
-            note.style.display = '';
-            note.innerHTML = `📌 <b>ผู้สอนจะกำหนดกลุ่มให้ภายหลัง</b> ลงทะเบียนตอนนี้ได้เลย`;
-          }
+          phoneForm.style.display = 'none';
+          msg.innerHTML = `<div class="message info">ห้องเรียนนี้ปิดรับลงทะเบียนแล้ว — เฉพาะคนที่ลงทะเบียนไว้แล้วเท่านั้นที่เข้าได้</div>`;
         }
       } catch (e) {
         cInfo.innerHTML = `<span style="color:#c33;">โหลดข้อมูลไม่ได้</span>`;
       }
     }
 
-    form.addEventListener('submit', async (e) => {
+    function buildGroupSection() {
+      if (!classroom.peerReviewEnabled) return;
+      const mode = classroom.groupAssignmentMode || 'self';
+      const note = document.getElementById('groupNote');
+      if (mode === 'self') {
+        groupSection.style.display = '';
+        groupButtons.innerHTML = classroom.validGroups.map(g =>
+          `<button type="button" class="group-btn" data-group="${escapeHtml(g)}">กลุ่ม ${escapeHtml(g)}</button>`
+        ).join('');
+        groupButtons.querySelectorAll('.group-btn').forEach(btn => {
+          btn.onclick = () => {
+            groupButtons.querySelectorAll('.group-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            groupInput.value = btn.dataset.group;
+          };
+        });
+      } else if (mode === 'random') {
+        note.style.display = '';
+        note.innerHTML = `🎲 <b>ระบบจะสุ่มกลุ่มให้อัตโนมัติ</b> (มี ${classroom.validGroups.length} กลุ่ม)`;
+      } else if (mode === 'admin') {
+        note.style.display = '';
+        note.innerHTML = `📌 <b>ผู้สอนจะกำหนดกลุ่มให้ภายหลัง</b>`;
+      }
+    }
+
+    phoneForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.innerHTML = '';
+      const phone = document.getElementById('phone').value.replace(/[^\d+]/g, '').trim();
+      if (!phone) {
+        msg.innerHTML = `<div class="message error">กรุณากรอกเบอร์มือถือ</div>`;
+        return;
+      }
+      try {
+        const res = await fetch(`/api/c/${cid}/check-phone`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone })
+        });
+        const data = await res.json();
+        phoneForm.style.display = 'none';
+        if (data.exists) {
+          isReturning = true;
+          msg.innerHTML = `<div class="message info">เคยลงทะเบียนแล้ว — กรอกรหัสคลาสเพื่อเข้าระบบ</div>`;
+          codeForm.style.display = '';
+          document.getElementById('enrollCode').focus();
+        } else {
+          isReturning = false;
+          buildGroupSection();
+          profileForm.style.display = '';
+          document.getElementById('firstName').focus();
+        }
+      } catch (err) {
+        msg.innerHTML = `<div class="message error">${escapeHtml(err.message)}</div>`;
+      }
+    });
+
+    profileForm.addEventListener('submit', (e) => {
       e.preventDefault();
       msg.innerHTML = '';
       const mode = classroom && classroom.groupAssignmentMode || 'self';
@@ -127,13 +181,30 @@
         msg.innerHTML = `<div class="message error">กรุณาเลือกกลุ่ม</div>`;
         return;
       }
+      profileForm.style.display = 'none';
+      codeForm.style.display = '';
+      document.getElementById('enrollCode').focus();
+    });
+
+    codeForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.innerHTML = '';
+      const code = document.getElementById('enrollCode').value.trim();
+      if (!/^\d{4}$/.test(code)) {
+        msg.innerHTML = `<div class="message error">รหัสต้องเป็นตัวเลข 4 หลัก</div>`;
+        return;
+      }
       const payload = {
-        studentId: document.getElementById('studentId').value.trim(),
-        firstName: document.getElementById('firstName').value.trim(),
-        lastName: document.getElementById('lastName').value.trim(),
-        nickname: document.getElementById('nickname').value.trim(),
-        group: groupInput.value || ''
+        phone: document.getElementById('phone').value.replace(/[^\d+]/g, '').trim(),
+        enrollCode: code
       };
+      if (!isReturning) {
+        payload.studentId = document.getElementById('studentId').value.trim();
+        payload.firstName = document.getElementById('firstName').value.trim();
+        payload.lastName = document.getElementById('lastName').value.trim();
+        payload.nickname = document.getElementById('nickname').value.trim();
+        payload.group = groupInput.value || '';
+      }
       try {
         const res = await fetch(`/api/c/${cid}/register`, {
           method: 'POST',
@@ -150,7 +221,7 @@
         const next = data.user.selfie ? `/c/${cid}/feed` : `/c/${cid}/selfie`;
         setTimeout(() => { window.location.href = next; }, 800);
       } catch (err) {
-        msg.innerHTML = `<div class="message error">เกิดข้อผิดพลาด: ${escapeHtml(err.message)}</div>`;
+        msg.innerHTML = `<div class="message error">${escapeHtml(err.message)}</div>`;
       }
     });
 
