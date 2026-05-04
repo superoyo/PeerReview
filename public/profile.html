@@ -37,8 +37,7 @@
 
       <div id="groupSection" style="display:none;">
         <label>กลุ่ม</label>
-        <div class="group-buttons" id="groupButtons"></div>
-        <input type="hidden" id="group" />
+        <div id="groupDisplay" style="padding: 12px 14px; background: #f5f7fc; border-radius: 8px; font-size: 16px; font-weight: 600; color: #4555a6;"></div>
         <p class="hint" id="groupHint" style="margin-top:6px;"></p>
       </div>
 
@@ -96,25 +95,14 @@
         const mode = classroom.groupAssignmentMode || 'self';
         const sec = document.getElementById('groupSection');
         sec.style.display = '';
+        const display = document.getElementById('groupDisplay');
         const hint = document.getElementById('groupHint');
-        if (mode === 'self') {
-          hint.textContent = 'คุณเปลี่ยนกลุ่มได้';
-          const buttons = document.getElementById('groupButtons');
-          buttons.innerHTML = classroom.validGroups.map(g => `
-            <button type="button" class="group-btn ${me.group === g ? 'selected' : ''}" data-group="${escapeHtml(g)}">กลุ่ม ${escapeHtml(g)}</button>
-          `).join('');
-          document.getElementById('group').value = me.group || '';
-          buttons.querySelectorAll('.group-btn').forEach(btn => {
-            btn.onclick = () => {
-              buttons.querySelectorAll('.group-btn').forEach(b => b.classList.remove('selected'));
-              btn.classList.add('selected');
-              document.getElementById('group').value = btn.dataset.group;
-            };
-          });
-        } else {
-          hint.innerHTML = `กลุ่มปัจจุบัน: <b>${me.group ? `กลุ่ม ${escapeHtml(me.group)}` : 'ยังไม่มี'}</b> · ${mode === 'random' ? 'ระบบสุ่ม' : 'ผู้สอนกำหนด'} (แก้ไม่ได้ในหน้านี้)`;
-          document.getElementById('groupButtons').innerHTML = '';
-        }
+        display.textContent = me.group ? `กลุ่ม ${me.group}` : 'ยังไม่ได้กำหนดกลุ่ม';
+        if (!me.group) display.style.color = '#888';
+        const modeText = mode === 'self' ? 'นักศึกษาเลือกเองตอนลงทะเบียน'
+                       : mode === 'random' ? 'ระบบสุ่ม'
+                       : 'ผู้สอนกำหนด';
+        hint.textContent = `วิธีการจัดกลุ่ม: ${modeText} · กลุ่มเปลี่ยนในหน้านี้ไม่ได้`;
       }
     }
 
@@ -127,9 +115,7 @@
         lastName: document.getElementById('lastName').value.trim(),
         nickname: document.getElementById('nickname').value.trim()
       };
-      if (classroom && classroom.peerReviewEnabled && classroom.groupAssignmentMode === 'self') {
-        payload.group = document.getElementById('group').value;
-      }
+      // Group cannot be changed via profile page
       try {
         const res = await fetch(`/api/c/${cid}/me/${userIdent}`, {
           method: 'PATCH',

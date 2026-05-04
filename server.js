@@ -195,19 +195,12 @@ app.patch('/api/c/:cid/me/:phone', loadClassroom, (req, res) => {
   const u = db.getUser(req.classroom.id, req.params.phone);
   if (!u) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
   const fields = req.body || {};
-  // Only allow specific fields
+  // Only allow specific fields. Group is NOT allowed here — set at registration only,
+  // or by admin via /api/c/:cid/admin/set-group
   const allowed = {};
   ['firstName', 'lastName', 'nickname', 'studentId'].forEach(k => {
     if (fields[k] !== undefined) allowed[k] = String(fields[k]).trim();
   });
-  // Group can only be changed when mode=self
-  if (fields.group !== undefined && req.classroom.peerReviewEnabled && req.classroom.groupAssignmentMode === 'self') {
-    const g = String(fields.group).trim();
-    if (g && !req.classroom.validGroups.includes(g)) {
-      return res.status(400).json({ error: `กลุ่มต้องเป็น ${req.classroom.validGroups.join(', ')}` });
-    }
-    allowed.group = g;
-  }
   const updated = db.updateUser(req.classroom.id, req.params.phone, allowed);
   res.json({ ok: true, user: updated });
 });
