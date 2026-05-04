@@ -90,6 +90,17 @@ app.get('/api/c/:cid', loadClassroom, (req, res) => {
   res.json({ classroom: req.classroom });
 });
 
+function pickBalancedGroup(classroomId, validGroups) {
+  const counts = {};
+  validGroups.forEach(g => counts[g] = 0);
+  db.getUsers(classroomId).forEach(u => {
+    if (u.group && counts[u.group] !== undefined) counts[u.group]++;
+  });
+  const min = Math.min(...Object.values(counts));
+  const candidates = validGroups.filter(g => counts[g] === min);
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
 app.post('/api/c/:cid/register', loadClassroom, (req, res) => {
   const c = req.classroom;
   if (!c.registrationOpen) {
@@ -105,16 +116,31 @@ app.post('/api/c/:cid/register', loadClassroom, (req, res) => {
   const nick = String(nickname || '').trim();
   const grpStr = group ? String(group).trim() : '';
 
-  if (c.peerReviewEnabled && grpStr && !c.validGroups.includes(grpStr)) {
-    return res.status(400).json({ error: `กลุ่มต้องเป็น ${c.validGroups.join(', ')}` });
+  // Determine group based on assignment mode
+  let assignedGroup = '';
+  if (c.peerReviewEnabled) {
+    const mode = c.groupAssignmentMode || 'self';
+    if (mode === 'self') {
+      if (!grpStr) return res.status(400).json({ error: 'กรุณาเลือกกลุ่ม' });
+      if (!c.validGroups.includes(grpStr)) {
+        return res.status(400).json({ error: `กลุ่มต้องเป็น ${c.validGroups.join(', ')}` });
+      }
+      assignedGroup = grpStr;
+    } else if (mode === 'random') {
+      // ignore client input, randomly assign balanced
+      assignedGroup = pickBalancedGroup(c.id, c.validGroups);
+    } else if (mode === 'admin') {
+      // leave unassigned
+      assignedGroup = '';
+    }
   }
 
   const existing = db.getUser(c.id, sid);
   if (existing) {
     if ((existing.firstName === fn || (!existing.firstName && existing.name && existing.name.split(/\s+/)[0] === fn))
         && (existing.lastName === ln || (!existing.lastName && existing.name && existing.name.split(/\s+/).slice(1).join(' ') === ln))) {
-      // Same person logging in again — update group if provided
-      if (grpStr && grpStr !== existing.group) {
+      // Same person logging in again — only update group if mode='self' and provided
+      if (c.peerReviewEnabled && c.groupAssignmentMode === 'self' && grpStr && grpStr !== existing.group) {
         db.setUserGroup(c.id, sid, grpStr);
       }
       const fresh = db.getUser(c.id, sid);
@@ -128,10 +154,18 @@ app.post('/api/c/:cid/register', loadClassroom, (req, res) => {
     firstName: fn,
     lastName: ln,
     nickname: nick,
-    group: grpStr,
+    group: assignedGroup,
     registeredAt: new Date().toISOString()
   });
-  res.json({ ok: true, user, message: 'ลงทะเบียนสำเร็จ' });
+  let message = 'ลงทะเบียนสำเร็จ';
+  if (c.peerReviewEnabled) {
+    if (c.groupAssignmentMode === 'random' && assignedGroup) {
+      message = `ลงทะเบียนสำเร็จ ระบบสุ่มให้คุณอยู่กลุ่ม ${assignedGroup}`;
+    } else if (c.groupAssignmentMode === 'admin') {
+      message = 'ลงทะเบียนสำเร็จ ผู้สอนจะกำหนดกลุ่มให้ภายหลัง';
+    }
+  }
+  res.json({ ok: true, user, message });
 });
 
 app.post('/api/c/:cid/selfie', loadClassroom, (req, res) => {
@@ -291,13 +325,17 @@ app.get('/api/admin/classrooms', requireAdmin, (req, res) => {
 });
 
 app.post('/api/admin/classrooms', requireAdmin, (req, res) => {
-  const { code, name, description, university, peerReviewEnabled } = req.body || {};
+  const { code, name, description, university, peerReviewEnabled, groupCount, groupAssignmentMode } = req.body || {};
   if (!code || !name) return res.status(400).json({ error: 'กรุณากรอกรหัสและชื่อวิชา' });
   let id = db.slugify(code);
   let suffix = 1;
   while (db.classroomIdExists(id)) {
     id = `${db.slugify(code)}-${++suffix}`;
   }
+  // Compute validGroups from groupCount (default 4)
+  const n = Number.isFinite(+groupCount) && +groupCount > 0 ? Math.min(20, Math.floor(+groupCount)) : 4;
+  const validGroups = Array.from({ length: n }, (_, i) => String(i + 1));
+  const mode = ['self', 'random', 'admin'].includes(groupAssignmentMode) ? groupAssignmentMode : 'self';
   const c = db.createClassroom({
     id,
     code: String(code).trim(),
@@ -307,9 +345,59 @@ app.post('/api/admin/classrooms', requireAdmin, (req, res) => {
     createdAt: new Date().toISOString(),
     registrationOpen: true,
     votingOpen: false,
-    peerReviewEnabled: peerReviewEnabled !== false
+    peerReviewEnabled: peerReviewEnabled !== false,
+    validGroups,
+    groupAssignmentMode: mode
   });
   res.json({ ok: true, classroom: c });
+});
+
+app.patch('/api/admin/classrooms/:cid/groups', requireAdmin, loadClassroom, (req, res) => {
+  const { groupCount, groupAssignmentMode } = req.body || {};
+  const fields = {};
+  if (groupCount !== undefined) {
+    const n = Number.isFinite(+groupCount) && +groupCount > 0 ? Math.min(20, Math.floor(+groupCount)) : 4;
+    fields.validGroups = Array.from({ length: n }, (_, i) => String(i + 1));
+  }
+  if (groupAssignmentMode !== undefined && ['self', 'random', 'admin'].includes(groupAssignmentMode)) {
+    fields.groupAssignmentMode = groupAssignmentMode;
+  }
+  const updated = db.updateClassroom(req.classroom.id, fields);
+  res.json({ ok: true, classroom: updated });
+});
+
+// Randomize groups for ALL students in a classroom (balanced)
+app.post('/api/c/:cid/admin/randomize-groups', requireAdmin, loadClassroom, (req, res) => {
+  const c = req.classroom;
+  if (!c.peerReviewEnabled) return res.status(400).json({ error: 'ห้องนี้ไม่ได้เปิด Peer Review' });
+  const users = db.getUsers(c.id);
+  if (users.length === 0) return res.json({ ok: true, assigned: 0 });
+  // Build balanced random distribution
+  const groups = c.validGroups;
+  const total = users.length;
+  const baseSize = Math.floor(total / groups.length);
+  const remainder = total % groups.length;
+  // Each group gets baseSize, first `remainder` groups get +1
+  const slots = [];
+  groups.forEach((g, i) => {
+    const size = baseSize + (i < remainder ? 1 : 0);
+    for (let k = 0; k < size; k++) slots.push(g);
+  });
+  // Shuffle slots
+  for (let i = slots.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [slots[i], slots[j]] = [slots[j], slots[i]];
+  }
+  // Shuffle users to randomize who gets which slot
+  const shuffledUsers = [...users];
+  for (let i = shuffledUsers.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffledUsers[i], shuffledUsers[j]] = [shuffledUsers[j], shuffledUsers[i]];
+  }
+  shuffledUsers.forEach((u, idx) => {
+    db.setUserGroup(c.id, u.studentId, slots[idx]);
+  });
+  res.json({ ok: true, assigned: total });
 });
 
 app.patch('/api/admin/classrooms/:cid', requireAdmin, loadClassroom, (req, res) => {

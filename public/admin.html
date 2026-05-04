@@ -64,6 +64,7 @@
       <div class="actions">
         <button id="toggleReg" class="secondary">เปิด/ปิด ลงทะเบียน</button>
         <button id="toggleVote" class="success">เปิดให้โหวต</button>
+        <button id="randomizeBtn" class="secondary">สุ่มกลุ่มใหม่ทั้งหมด</button>
         <a id="dashLink" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:12px 24px;border-radius:8px;background:#f0f2f8;color:#444;font-size:15px;font-weight:500;">เปิด Dashboard</a>
         <a id="regLink" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:12px 24px;border-radius:8px;background:#f0f2f8;color:#444;font-size:15px;font-weight:500;">หน้าลงทะเบียน</a>
         <button id="exportBtn" class="secondary">Export CSV</button>
@@ -99,6 +100,9 @@
       return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
       }[c]));
+    }
+    function modeLabel(m) {
+      return ({ self: 'เลือกเอง', random: 'สุ่ม', admin: 'ผู้สอนกำหนด' })[m || 'self'] || m;
     }
     function formatDate(iso) {
       if (!iso) return '-';
@@ -188,7 +192,7 @@
               <span>โหวต <b>${c.voteCount}</b> รายการ</span>
               <span class="${c.registrationOpen ? 'open' : 'closed'}">${c.registrationOpen ? '● ลงทะเบียน เปิด' : '○ ลงทะเบียน ปิด'}</span>
               <span class="${c.votingOpen ? 'open' : 'closed'}">${c.votingOpen ? '● โหวต เปิด' : '○ โหวต ปิด'}</span>
-              ${c.peerReviewEnabled ? '<span class="tag-pr">Peer Review</span>' : ''}
+              ${c.peerReviewEnabled ? `<span class="tag-pr">Peer Review · ${c.validGroups.length} กลุ่ม · ${modeLabel(c.groupAssignmentMode)}</span>` : ''}
             </div>
           </div>
           <div class="cr-actions">
@@ -229,6 +233,34 @@
                 <input type="checkbox" id="nfPR" checked />
                 <span>เปิดใช้ Peer Review (มีกลุ่ม โหวตคะแนน เช็คชื่อ)</span>
               </label>
+              <div id="prOptions">
+                <label>จำนวนกลุ่ม</label>
+                <input type="number" id="nfGroupCount" value="4" min="2" max="20" />
+                <label>วิธีการจัดกลุ่ม</label>
+                <div class="mode-options">
+                  <label class="mode-opt">
+                    <input type="radio" name="nfMode" value="self" checked />
+                    <div>
+                      <b>ผู้เรียนเลือกกลุ่มเอง</b>
+                      <span>นักศึกษากดเลือกกลุ่มที่ต้องการตอนลงทะเบียน</span>
+                    </div>
+                  </label>
+                  <label class="mode-opt">
+                    <input type="radio" name="nfMode" value="random" />
+                    <div>
+                      <b>สุ่มอัตโนมัติ</b>
+                      <span>ระบบสุ่มกลุ่มให้แต่ละคนตอนลงทะเบียน (กระจายเท่ากัน)</span>
+                    </div>
+                  </label>
+                  <label class="mode-opt">
+                    <input type="radio" name="nfMode" value="admin" />
+                    <div>
+                      <b>ผู้สอนกำหนดให้ภายหลัง</b>
+                      <span>นักศึกษาลงทะเบียนก่อน แล้วผู้สอนกำหนดกลุ่มเอง</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
               <button type="submit" class="primary">สร้างห้องเรียน</button>
               <div id="nfMsg"></div>
             </form>
@@ -238,14 +270,21 @@
       const close = () => { root.innerHTML = ''; };
       document.getElementById('closeModal').onclick = close;
       document.getElementById('modalBg').onclick = (e) => { if (e.target.id === 'modalBg') close(); };
+      // Toggle prOptions visibility based on PR checkbox
+      const prCheck = document.getElementById('nfPR');
+      const prOpts = document.getElementById('prOptions');
+      prCheck.onchange = () => { prOpts.style.display = prCheck.checked ? '' : 'none'; };
       document.getElementById('newForm').onsubmit = async (e) => {
         e.preventDefault();
+        const mode = document.querySelector('input[name="nfMode"]:checked').value;
         const payload = {
           code: document.getElementById('nfCode').value.trim(),
           name: document.getElementById('nfName').value.trim(),
           description: document.getElementById('nfDesc').value.trim(),
           university: document.getElementById('nfUni').value.trim(),
-          peerReviewEnabled: document.getElementById('nfPR').checked
+          peerReviewEnabled: prCheck.checked,
+          groupCount: parseInt(document.getElementById('nfGroupCount').value) || 4,
+          groupAssignmentMode: mode
         };
         const res = await authFetch('/api/admin/classrooms', {
           method: 'POST',
@@ -304,6 +343,14 @@
       if (!r.ok) { alert('error'); return; }
       await loadClassMeta();
     };
+    document.getElementById('randomizeBtn').onclick = async () => {
+      if (!confirm('สุ่มกลุ่มใหม่ให้นักศึกษาทุกคน? (กลุ่มเดิมจะถูกเขียนทับ)')) return;
+      const r = await authFetch(`/api/c/${cid}/admin/randomize-groups`, { method: 'POST' });
+      const data = await r.json();
+      if (!r.ok) { alert(data.error || 'error'); return; }
+      alert(`สุ่มกลุ่มให้นักศึกษา ${data.assigned} คนเรียบร้อย`);
+      await initClassView();
+    };
 
     async function downloadFile(url, defaultName) {
       const res = await authFetch(url);
@@ -346,15 +393,16 @@
     async function loadUsers() {
       const res = await authFetch(`/api/c/${cid}/admin/users`);
       if (res.status === 401) { logout(); return; }
-      const { grouped, users, classDates } = await res.json();
+      const { grouped, users, classDates, classroom } = await res.json();
       const el = document.getElementById('usersTab');
       if (users.length === 0) {
         el.innerHTML = `<div class="empty-state">ยังไม่มีผู้ลงทะเบียน</div>`;
         return;
       }
       const dates = classDates || [];
+      const validGroups = (classroom && classroom.validGroups) || [];
       const groupNames = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
-      let html = `<p class="hint">รวม ${users.length} คน · ${groupNames.length} กลุ่ม</p>`;
+      let html = `<p class="hint">รวม ${users.length} คน · ${groupNames.length} กลุ่ม · จัดกลุ่มแบบ <b>${escapeHtml(modeLabel(classroom && classroom.groupAssignmentMode))}</b> · คลิก dropdown ในคอลัมน์กลุ่มเพื่อย้ายคน</p>`;
       groupNames.forEach(g => {
         html += `
           <div class="group-section">
@@ -366,6 +414,7 @@
                   <th>รหัส</th>
                   <th>ชื่อ-นามสกุล</th>
                   <th>ชื่อเล่น</th>
+                  <th>กลุ่ม</th>
                   <th>เวลาลงทะเบียน</th>
                   <th>วันที่มาเรียน</th>
                   <th>คะแนนที่ได้รับ</th>
@@ -384,12 +433,19 @@
                   const photo = u.selfie
                     ? `<img class="thumb" src="${escapeHtml(u.selfie)}" alt="" />`
                     : `<div class="thumb no-photo">?</div>`;
+                  const groupSelect = `
+                    <select class="group-select" data-id="${escapeHtml(u.studentId)}">
+                      <option value="" ${!u.group ? 'selected' : ''}>—</option>
+                      ${validGroups.map(g2 => `<option value="${escapeHtml(g2)}" ${u.group === g2 ? 'selected' : ''}>${escapeHtml(g2)}</option>`).join('')}
+                    </select>
+                  `;
                   return `
                     <tr>
                       <td>${photo}</td>
                       <td>${escapeHtml(u.studentId)}</td>
                       <td>${escapeHtml((u.firstName || '') + ' ' + (u.lastName || ''))}</td>
                       <td>${escapeHtml(u.nickname || '-')}</td>
+                      <td>${groupSelect}</td>
                       <td>${formatDate(u.registeredAt)}</td>
                       <td>${tags}</td>
                       <td><button class="secondary view-votes-btn" data-id="${escapeHtml(u.studentId)}">ดูคะแนน</button></td>
@@ -404,6 +460,21 @@
       el.innerHTML = html;
       el.querySelectorAll('.view-votes-btn').forEach(b => {
         b.onclick = () => showVoteDetails(b.dataset.id);
+      });
+      el.querySelectorAll('.group-select').forEach(sel => {
+        sel.onchange = async () => {
+          const studentId = sel.dataset.id;
+          const newGroup = sel.value;
+          const r = await authFetch(`/api/c/${cid}/admin/set-group`, {
+            method: 'POST',
+            body: JSON.stringify({ studentId, group: newGroup })
+          });
+          if (!r.ok) {
+            const data = await r.json().catch(() => ({}));
+            alert(data.error || 'เปลี่ยนกลุ่มไม่สำเร็จ');
+          }
+          await loadUsers();
+        };
       });
     }
 

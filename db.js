@@ -35,9 +35,18 @@ db.exec(`
     peerReviewEnabled INTEGER DEFAULT 1,
     classDates TEXT,
     attendancePercent INTEGER DEFAULT 5,
-    validGroups TEXT
+    validGroups TEXT,
+    groupAssignmentMode TEXT DEFAULT 'self'
   );
 `);
+// Migrate: add groupAssignmentMode column for existing classrooms tables
+try {
+  const ccols = db.prepare("PRAGMA table_info(classrooms)").all().map(c => c.name);
+  if (!ccols.includes('groupAssignmentMode')) {
+    db.exec(`ALTER TABLE classrooms ADD COLUMN groupAssignmentMode TEXT DEFAULT 'self'`);
+    db.exec(`UPDATE classrooms SET groupAssignmentMode = 'self' WHERE groupAssignmentMode IS NULL`);
+  }
+} catch (e) { /* ignore */ }
 
 // ---------- Migrate users / votes to classroom-scoped schema ----------
 function migrateSchema() {
@@ -198,7 +207,8 @@ function rowToClassroom(r) {
     peerReviewEnabled: !!r.peerReviewEnabled,
     classDates: r.classDates ? JSON.parse(r.classDates) : DEFAULT_CLASS_DATES,
     attendancePercent: r.attendancePercent ?? 5,
-    validGroups: r.validGroups ? JSON.parse(r.validGroups) : DEFAULT_GROUPS
+    validGroups: r.validGroups ? JSON.parse(r.validGroups) : DEFAULT_GROUPS,
+    groupAssignmentMode: r.groupAssignmentMode || 'self'
   };
 }
 
@@ -266,8 +276,8 @@ module.exports = {
   },
   createClassroom(c) {
     db.prepare(`INSERT INTO classrooms
-      (id, code, name, description, university, createdAt, registrationOpen, votingOpen, peerReviewEnabled, classDates, attendancePercent, validGroups)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      (id, code, name, description, university, createdAt, registrationOpen, votingOpen, peerReviewEnabled, classDates, attendancePercent, validGroups, groupAssignmentMode)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       c.id, c.code, c.name,
       c.description || '',
       c.university || 'มหาวิทยาลัยกรุงเทพ',
@@ -277,7 +287,8 @@ module.exports = {
       c.peerReviewEnabled ? 1 : 0,
       JSON.stringify(c.classDates || DEFAULT_CLASS_DATES),
       c.attendancePercent ?? 5,
-      JSON.stringify(c.validGroups || DEFAULT_GROUPS)
+      JSON.stringify(c.validGroups || DEFAULT_GROUPS),
+      c.groupAssignmentMode || 'self'
     );
     return this.getClassroom(c.id);
   },
@@ -285,7 +296,7 @@ module.exports = {
     const updates = [];
     const values = [];
     const intFields = ['registrationOpen', 'votingOpen', 'peerReviewEnabled', 'attendancePercent'];
-    const strFields = ['code', 'name', 'description', 'university'];
+    const strFields = ['code', 'name', 'description', 'university', 'groupAssignmentMode'];
     strFields.forEach(k => {
       if (fields[k] !== undefined) { updates.push(`${k} = ?`); values.push(String(fields[k])); }
     });

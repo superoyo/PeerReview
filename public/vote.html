@@ -95,11 +95,29 @@
         contentEl.innerHTML = `<div class="message error">เชื่อมต่อเซิร์ฟเวอร์ไม่ได้</div>`;
         return;
       }
+      // Update local user with fresh state (group might have been set by admin)
+      if (myState.user && myState.user.group) {
+        user.group = myState.user.group;
+        localStorage.setItem(userKey, JSON.stringify(user));
+      }
       if (myState.hasVoted) {
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
         renderDone();
       } else if (myState.votingOpen) {
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (!myState.user.group) {
+          contentEl.innerHTML = `
+            ${attendanceSection(true)}
+            <div class="card" style="text-align: center; padding: 30px; margin-top: 14px;">
+              <h2 style="border:none;">รอผู้สอนกำหนดกลุ่ม</h2>
+              <p style="color: #777; margin-top: 8px;">คุณยังไม่ได้รับการกำหนดกลุ่ม รอผู้สอนจัดให้ก่อน</p>
+              <div style="margin-top: 18px; font-size: 28px;">📌</div>
+            </div>
+          `;
+          bindAttendanceChange();
+          if (!pollTimer) pollTimer = setInterval(refreshState, 3000);
+          return;
+        }
         loadPeers();
       } else {
         renderWaiting();

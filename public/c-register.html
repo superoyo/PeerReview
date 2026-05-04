@@ -32,10 +32,11 @@
       <input type="text" id="nickname" placeholder="ชื่อเล่น" />
 
       <div id="groupSection" style="display:none;">
-        <label>เลือกกลุ่ม</label>
+        <label id="groupLabel">เลือกกลุ่ม</label>
         <div class="group-buttons" id="groupButtons"></div>
         <input type="hidden" id="group" />
       </div>
+      <div id="groupNote" class="hint" style="display:none; margin-top: 6px;"></div>
 
       <button type="submit" class="primary">เข้าสู่ระบบ / ลงทะเบียน</button>
     </form>
@@ -91,17 +92,27 @@
           return;
         }
         if (classroom.peerReviewEnabled && classroom.validGroups && classroom.validGroups.length > 0) {
-          groupSection.style.display = '';
-          groupButtons.innerHTML = classroom.validGroups.map(g =>
-            `<button type="button" class="group-btn" data-group="${escapeHtml(g)}">กลุ่ม ${escapeHtml(g)}</button>`
-          ).join('');
-          groupButtons.querySelectorAll('.group-btn').forEach(btn => {
-            btn.onclick = () => {
-              groupButtons.querySelectorAll('.group-btn').forEach(b => b.classList.remove('selected'));
-              btn.classList.add('selected');
-              groupInput.value = btn.dataset.group;
-            };
-          });
+          const mode = classroom.groupAssignmentMode || 'self';
+          const note = document.getElementById('groupNote');
+          if (mode === 'self') {
+            groupSection.style.display = '';
+            groupButtons.innerHTML = classroom.validGroups.map(g =>
+              `<button type="button" class="group-btn" data-group="${escapeHtml(g)}">กลุ่ม ${escapeHtml(g)}</button>`
+            ).join('');
+            groupButtons.querySelectorAll('.group-btn').forEach(btn => {
+              btn.onclick = () => {
+                groupButtons.querySelectorAll('.group-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                groupInput.value = btn.dataset.group;
+              };
+            });
+          } else if (mode === 'random') {
+            note.style.display = '';
+            note.innerHTML = `🎲 <b>ระบบจะสุ่มกลุ่มให้อัตโนมัติ</b> (มี ${classroom.validGroups.length} กลุ่ม) — กระจายเท่ากันโดยอัตโนมัติ`;
+          } else if (mode === 'admin') {
+            note.style.display = '';
+            note.innerHTML = `📌 <b>ผู้สอนจะกำหนดกลุ่มให้ภายหลัง</b> ลงทะเบียนตอนนี้ได้เลย`;
+          }
         }
       } catch (e) {
         cInfo.innerHTML = `<span style="color:#c33;">โหลดข้อมูลไม่ได้</span>`;
@@ -111,7 +122,8 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       msg.innerHTML = '';
-      if (classroom && classroom.peerReviewEnabled && !groupInput.value) {
+      const mode = classroom && classroom.groupAssignmentMode || 'self';
+      if (classroom && classroom.peerReviewEnabled && mode === 'self' && !groupInput.value) {
         msg.innerHTML = `<div class="message error">กรุณาเลือกกลุ่ม</div>`;
         return;
       }

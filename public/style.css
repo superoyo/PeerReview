@@ -433,6 +433,42 @@ table tbody tr:hover { background: #f9faff; }
   display: flex; gap: 16px; flex-wrap: wrap;
 }
 
+/* Mode option radio cards */
+.mode-options {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 6px;
+}
+.mode-opt {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px;
+  border: 1.5px solid #d8dde6;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin: 0;
+}
+.mode-opt:hover { border-color: #667eea; }
+.mode-opt:has(input:checked) {
+  background: #eef0ff; border-color: #667eea;
+}
+.mode-opt input[type="radio"] { margin-top: 4px; flex-shrink: 0; }
+.mode-opt > div { display: flex; flex-direction: column; gap: 2px; }
+.mode-opt b { color: #222; font-size: 14px; }
+.mode-opt span { color: #666; font-size: 12px; }
+
+/* Group select dropdown in admin user table */
+.group-select {
+  padding: 4px 8px;
+  border: 1.5px solid #d8dde6;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  background: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  min-width: 60px;
+}
+.group-select:focus { outline: none; border-color: #667eea; }
+
 .date-list {
   display: flex;
   flex-wrap: wrap;
