@@ -41,6 +41,11 @@
     <div class="activities">
       <h2>เลือกกิจกรรม</h2>
       <div class="activities-grid">
+        <a class="activity-card" id="actCal">
+          <div class="act-icon">📅</div>
+          <div class="act-title">ปฏิทินการเรียน</div>
+          <div class="act-desc">ดูตารางเรียน เอกสาร ส่งงาน</div>
+        </a>
         <a class="activity-card" id="actPeer">
           <div class="act-icon">📝</div>
           <div class="act-title">Peer Review</div>
@@ -48,8 +53,8 @@
         </a>
         <a class="activity-card" id="actAssign">
           <div class="act-icon">📚</div>
-          <div class="act-title">ส่งงาน</div>
-          <div class="act-desc">ดูและส่งงานที่ได้รับมอบหมาย</div>
+          <div class="act-title">งานทั้งหมด</div>
+          <div class="act-desc">รายการงานทั้งหมดในรูปแบบลิสต์</div>
           <div class="act-badge" id="assignCount" style="display:none;"></div>
         </a>
         <a class="activity-card" id="actDash" target="_blank">
@@ -83,6 +88,7 @@
       window.location.href = `/c/${cid}`;
     };
 
+    document.getElementById('actCal').href = `/c/${cid}/calendar`;
     document.getElementById('actPeer').href = `/c/${cid}/vote`;
     document.getElementById('actAssign').href = `/c/${cid}/assignments`;
     document.getElementById('actDash').href = `/c/${cid}/dashboard`;

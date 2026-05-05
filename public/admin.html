@@ -522,14 +522,46 @@
       el.querySelectorAll('button[data-del]').forEach(b => b.onclick = () => deleteClassDate(b.dataset.del));
     }
 
-    function openDateEditor(dateId) {
+    async function openDateEditor(dateId) {
       const dates = schedClassroom.classDates || [];
       const cd = dates.find(d => d.id === dateId) || { id: dateId };
       const isExisting = !!dates.find(d => d.id === dateId);
+      // Load assignments for this date
+      let assignsForDate = [];
+      if (isExisting) {
+        try {
+          const r = await authFetch(`/api/c/${cid}/admin/class-dates/${dateId}/assignments`);
+          if (r.ok) {
+            const d = await r.json();
+            assignsForDate = d.assignments || [];
+          }
+        } catch (e) {}
+      }
       const root = document.getElementById('modalRoot');
+      const matsHtml = (cd.materials && cd.materials.length > 0)
+        ? `<div class="mat-existing">
+            ${cd.materials.map((m, i) => `
+              <div class="mat-item">
+                <a href="${escapeHtml(m.url)}" target="_blank">📄 ${escapeHtml(m.name)}</a>
+                <button type="button" class="danger" data-mat-del="${i}" style="padding: 4px 10px; font-size: 12px;">ลบ</button>
+              </div>
+            `).join('')}
+          </div>`
+        : '';
+      const assignsHtml = assignsForDate.length > 0
+        ? `<div class="mat-existing">
+            ${assignsForDate.map(a => `
+              <div class="mat-item">
+                <span>${escapeHtml(a.title)} ${a.type === 'group' ? '<span class="tag-group">งานกลุ่ม</span>' : '<span class="tag-individual">งานเดี่ยว</span>'}</span>
+                <span class="hint" style="font-size:12px;">เต็ม ${a.maxScore || 10}</span>
+              </div>
+            `).join('')}
+          </div>`
+        : '<p class="hint">ยังไม่มีงานในวันนี้</p>';
+
       root.innerHTML = `
         <div class="modal-backdrop" id="modalBg">
-          <div class="modal" onclick="event.stopPropagation()">
+          <div class="modal" style="max-width: 720px;" onclick="event.stopPropagation()">
             <button class="secondary modal-close" id="closeModal">ปิด</button>
             <h3>${escapeHtml(dateIdToTH(dateId))}</h3>
             <p class="hint">${isExisting ? 'แก้ไขรายละเอียดวันเรียนนี้' : 'เพิ่มเป็นวันเรียน + กรอกรายละเอียด'}</p>
@@ -549,11 +581,26 @@
               <label>วิทยากร / ผู้สอน</label>
               <input type="text" id="dInstr" placeholder="ชื่อวิทยากรประจำคาบ" value="${escapeHtml(cd.instructor || '')}" />
               <div style="display:flex; gap:8px; margin-top:14px;">
-                <button type="submit" class="primary" style="flex:1; margin:0;">${isExisting ? 'บันทึก' : 'เพิ่มเป็นวันเรียน'}</button>
+                <button type="submit" class="primary" style="flex:1; margin:0;">${isExisting ? 'บันทึกรายละเอียด' : 'เพิ่มเป็นวันเรียน'}</button>
                 ${isExisting ? '<button type="button" class="danger" id="dDelBtn" style="margin:0;">ลบวันนี้ออก</button>' : ''}
               </div>
               <div id="dMsg"></div>
             </form>
+
+            ${isExisting ? `
+              <h3 style="margin-top: 24px;">📎 เอกสารประกอบ</h3>
+              ${matsHtml}
+              <form id="matForm">
+                <label>อัปโหลดไฟล์ใหม่ (ไม่เกิน 20 MB)</label>
+                <input type="file" id="matFile" />
+                <button type="submit" class="secondary" style="margin-top: 8px;">อัปโหลด</button>
+                <div id="matMsg"></div>
+              </form>
+
+              <h3 style="margin-top: 24px;">📝 งานในวันนี้</h3>
+              ${assignsHtml}
+              <button type="button" class="secondary" id="addAssignForDate" style="margin-top: 8px;">+ เพิ่มงานในวันนี้</button>
+            ` : ''}
           </div>
         </div>
       `;
@@ -583,6 +630,53 @@
           const updated = (schedClassroom.classDates || []).filter(d => d.id !== dateId);
           const ok = await saveClassDates(updated);
           if (ok) close();
+        };
+      }
+
+      // Material upload
+      const matForm = document.getElementById('matForm');
+      if (matForm) {
+        matForm.onsubmit = async (e) => {
+          e.preventDefault();
+          const file = document.getElementById('matFile').files[0];
+          const msgEl = document.getElementById('matMsg');
+          if (!file) { msgEl.innerHTML = '<div class="message error">กรุณาเลือกไฟล์</div>'; return; }
+          if (file.size > 20 * 1024 * 1024) { msgEl.innerHTML = '<div class="message error">ไฟล์ใหญ่เกิน 20 MB</div>'; return; }
+          msgEl.innerHTML = '<div class="message info">กำลังอัปโหลด...</div>';
+          const reader = new FileReader();
+          reader.onload = async () => {
+            try {
+              const r = await authFetch(`/api/c/${cid}/admin/class-dates/${dateId}/materials`, {
+                method: 'POST',
+                body: JSON.stringify({ fileData: reader.result, fileName: file.name })
+              });
+              const d = await r.json();
+              if (!r.ok) { msgEl.innerHTML = `<div class="message error">${escapeHtml(d.error)}</div>`; return; }
+              msgEl.innerHTML = '<div class="message success">อัปโหลดสำเร็จ</div>';
+              setTimeout(() => { close(); openDateEditor(dateId); }, 400);
+            } catch (e) {
+              msgEl.innerHTML = `<div class="message error">${escapeHtml(e.message)}</div>`;
+            }
+          };
+          reader.readAsDataURL(file);
+        };
+      }
+
+      // Material delete
+      root.querySelectorAll('button[data-mat-del]').forEach(b => {
+        b.onclick = async () => {
+          if (!confirm('ลบไฟล์นี้?')) return;
+          await authFetch(`/api/c/${cid}/admin/class-dates/${dateId}/materials/${b.dataset.matDel}`, { method: 'DELETE' });
+          close(); openDateEditor(dateId);
+        };
+      });
+
+      // Add assignment for this date
+      const addAssignBtn = document.getElementById('addAssignForDate');
+      if (addAssignBtn) {
+        addAssignBtn.onclick = () => {
+          close();
+          openNewAssignModal(dateId);
         };
       }
     }
@@ -685,13 +779,17 @@
       });
     }
 
-    function openNewAssignModal() {
+    function openNewAssignModal(presetDateId) {
       const root = document.getElementById('modalRoot');
+      const dateNote = presetDateId
+        ? `<p class="hint">งานนี้จะผูกกับวันที่ <b>${escapeHtml(dateIdToTH(presetDateId))}</b></p>`
+        : '';
       root.innerHTML = `
         <div class="modal-backdrop" id="modalBg">
           <div class="modal" onclick="event.stopPropagation()">
             <button class="secondary modal-close" id="closeModal">ปิด</button>
             <h3>สร้างงานใหม่</h3>
+            ${dateNote}
             <form id="aForm">
               <label>ชื่องาน</label>
               <input type="text" id="aTitle" required />
@@ -708,8 +806,16 @@
                   <div><b>งานกลุ่ม</b><span>ทุกคนในกลุ่มมีงานชิ้นเดียวกัน — ใครส่งก่อนได้</span></div>
                 </label>
               </div>
-              <label>กำหนดส่ง (ไม่บังคับ)</label>
-              <input type="datetime-local" id="aDue" />
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                  <label>คะแนนเต็ม</label>
+                  <input type="number" id="aMaxScore" value="10" min="0" step="0.5" />
+                </div>
+                <div>
+                  <label>กำหนดส่ง (ไม่บังคับ)</label>
+                  <input type="datetime-local" id="aDue" />
+                </div>
+              </div>
               <button type="submit" class="primary">สร้างงาน</button>
               <div id="aMsg"></div>
             </form>
@@ -726,7 +832,9 @@
           title: document.getElementById('aTitle').value.trim(),
           description: document.getElementById('aDesc').value.trim(),
           type: document.querySelector('input[name="aType"]:checked').value,
-          dueDate: due ? new Date(due).toISOString() : ''
+          dueDate: due ? new Date(due).toISOString() : (presetDateId || ''),
+          classDateId: presetDateId || '',
+          maxScore: parseFloat(document.getElementById('aMaxScore').value) || 10
         };
         const r = await authFetch(`/api/c/${cid}/admin/assignments`, {
           method: 'POST', body: JSON.stringify(payload)
@@ -737,7 +845,8 @@
           return;
         }
         close();
-        loadAssignmentsAdmin();
+        if (typeof loadAssignmentsAdmin === 'function') loadAssignmentsAdmin();
+        if (typeof loadSchedule === 'function' && presetDateId) loadSchedule();
       };
     }
 
@@ -747,30 +856,41 @@
       const a = data.assignment;
       const subs = data.submissions || [];
       const root = document.getElementById('modalRoot');
+      const maxScore = a.maxScore || 10;
       const rows = subs.length === 0
-        ? '<tr><td colspan="6" style="text-align:center;color:#888;padding:20px;">ยังไม่มีคนส่ง</td></tr>'
+        ? '<tr><td colspan="7" style="text-align:center;color:#888;padding:20px;">ยังไม่มีคนส่ง</td></tr>'
         : subs.map(s => `
-            <tr>
+            <tr data-sub="${s.id}">
               <td>${s.submitterSelfie ? `<img class="thumb" src="${escapeHtml(s.submitterSelfie)}" />` : `<div class="thumb no-photo">?</div>`}</td>
               <td>${escapeHtml(s.studentId)}</td>
               <td>${escapeHtml(s.submitterFullName || s.submitterName)}</td>
               <td>${s.groupNum ? `กลุ่ม ${escapeHtml(s.groupNum)}` : '-'}</td>
-              <td style="font-size:12px; max-width: 280px;">
+              <td style="font-size:12px; max-width: 240px;">
                 ${s.content ? `<div>${escapeHtml(s.content)}</div>` : ''}
                 ${s.link ? `<div><a href="${escapeHtml(s.link)}" target="_blank">🔗 ${escapeHtml(s.link)}</a></div>` : ''}
                 ${s.fileUrl ? `<div><a href="${escapeHtml(s.fileUrl)}" target="_blank">📎 ${escapeHtml(s.fileName || 'ไฟล์')}</a></div>` : ''}
+                <div class="hint" style="font-size:11px;">${formatDate(s.submittedAt)}</div>
               </td>
-              <td style="font-size:12px;">${formatDate(s.submittedAt)}</td>
+              <td style="font-size:13px; min-width: 200px;">
+                <input type="number" class="grade-score" min="0" max="${maxScore}" step="0.5" placeholder="0-${maxScore}" value="${s.score != null ? s.score : ''}" style="width: 70px; padding: 6px;" />
+                <span style="color:#888;"> / ${maxScore}</span>
+                <textarea class="grade-feedback" rows="2" placeholder="ความคิดเห็น" style="margin-top:4px; font-size:12px;">${escapeHtml(s.feedback || '')}</textarea>
+              </td>
+              <td>
+                <button class="primary grade-save" style="padding: 6px 12px; font-size: 13px;">บันทึกคะแนน</button>
+                ${s.gradedAt ? `<div class="hint" style="font-size:10px; margin-top:4px;">ตรวจ ${formatDate(s.gradedAt)}</div>` : ''}
+                <div class="grade-msg" style="margin-top: 4px;"></div>
+              </td>
             </tr>
           `).join('');
       root.innerHTML = `
         <div class="modal-backdrop" id="modalBg">
-          <div class="modal" style="max-width:900px;" onclick="event.stopPropagation()">
+          <div class="modal" style="max-width:1100px;" onclick="event.stopPropagation()">
             <button class="secondary modal-close" id="closeModal">ปิด</button>
-            <h3>${escapeHtml(a.title)}</h3>
+            <h3>${escapeHtml(a.title)} <span style="color:#888; font-size: 14px; font-weight:normal;">เต็ม ${maxScore}</span></h3>
             <p class="hint">${a.type === 'group' ? 'งานกลุ่ม' : 'งานเดี่ยว'} · ส่งแล้ว ${subs.length} รายการ</p>
             <table>
-              <thead><tr><th>รูป</th><th>รหัส</th><th>ผู้ส่ง</th><th>กลุ่ม</th><th>เนื้อหา</th><th>เวลา</th></tr></thead>
+              <thead><tr><th>รูป</th><th>รหัส</th><th>ผู้ส่ง</th><th>กลุ่ม</th><th>งานที่ส่ง</th><th>คะแนน + ความคิดเห็น</th><th></th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
           </div>
@@ -778,6 +898,27 @@
       `;
       document.getElementById('closeModal').onclick = () => { root.innerHTML = ''; };
       document.getElementById('modalBg').onclick = (e) => { if (e.target.id === 'modalBg') root.innerHTML = ''; };
+      // Bind grade save buttons
+      root.querySelectorAll('tr[data-sub]').forEach(tr => {
+        const sid = tr.dataset.sub;
+        const btn = tr.querySelector('.grade-save');
+        const scoreInput = tr.querySelector('.grade-score');
+        const feedbackInput = tr.querySelector('.grade-feedback');
+        const msgEl = tr.querySelector('.grade-msg');
+        btn.onclick = async () => {
+          msgEl.innerHTML = '<span class="hint">กำลังบันทึก...</span>';
+          const r = await authFetch(`/api/c/${cid}/admin/submissions/${sid}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              score: scoreInput.value,
+              feedback: feedbackInput.value
+            })
+          });
+          const d = await r.json();
+          if (!r.ok) { msgEl.innerHTML = `<span style="color:#c33;">${escapeHtml(d.error)}</span>`; return; }
+          msgEl.innerHTML = '<span style="color:#27ae60;">✓ บันทึก</span>';
+        };
+      });
     }
 
     async function loadUsers() {

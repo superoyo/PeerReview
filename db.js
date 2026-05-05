@@ -158,7 +158,9 @@ db.exec(`
     type TEXT NOT NULL DEFAULT 'individual',
     dueDate TEXT,
     createdAt TEXT NOT NULL,
-    isOpen INTEGER DEFAULT 1
+    isOpen INTEGER DEFAULT 1,
+    classDateId TEXT,
+    maxScore REAL DEFAULT 10
   );
   CREATE INDEX IF NOT EXISTS idx_assignments_classroom ON assignments(classroomId);
 
@@ -172,14 +174,37 @@ db.exec(`
     link TEXT,
     fileUrl TEXT,
     fileName TEXT,
-    submittedAt TEXT NOT NULL
+    submittedAt TEXT NOT NULL,
+    score REAL,
+    feedback TEXT,
+    gradedAt TEXT,
+    gradedBy TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_submissions_assignment ON submissions(assignmentId);
   CREATE INDEX IF NOT EXISTS idx_submissions_classroom ON submissions(classroomId);
 `);
 
+// Migrate columns if missing (must run before any index that references them)
+try {
+  const aCols = db.prepare("PRAGMA table_info(assignments)").all().map(c => c.name);
+  if (!aCols.includes('classDateId')) db.exec(`ALTER TABLE assignments ADD COLUMN classDateId TEXT`);
+  if (!aCols.includes('maxScore')) db.exec(`ALTER TABLE assignments ADD COLUMN maxScore REAL DEFAULT 10`);
+  const sCols = db.prepare("PRAGMA table_info(submissions)").all().map(c => c.name);
+  if (!sCols.includes('score')) db.exec(`ALTER TABLE submissions ADD COLUMN score REAL`);
+  if (!sCols.includes('feedback')) db.exec(`ALTER TABLE submissions ADD COLUMN feedback TEXT`);
+  if (!sCols.includes('gradedAt')) db.exec(`ALTER TABLE submissions ADD COLUMN gradedAt TEXT`);
+  if (!sCols.includes('gradedBy')) db.exec(`ALTER TABLE submissions ADD COLUMN gradedBy TEXT`);
+} catch (e) { console.error('migrate column failed:', e.message); }
+
+// Indexes that reference potentially-migrated columns — run AFTER ALTER
+try {
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_assignments_date ON assignments(classDateId);`);
+} catch (e) { /* ignore */ }
+
 const SUBMISSIONS_DIR = path.join(UPLOADS_DIR, 'submissions');
 if (!fs.existsSync(SUBMISSIONS_DIR)) fs.mkdirSync(SUBMISSIONS_DIR, { recursive: true });
+const MATERIALS_DIR = path.join(UPLOADS_DIR, 'materials');
+if (!fs.existsSync(MATERIALS_DIR)) fs.mkdirSync(MATERIALS_DIR, { recursive: true });
 
 // ---------- Default GE 207 classroom ----------
 function ensureDefaultClassroom() {
@@ -322,6 +347,8 @@ function rowToAssignment(r) {
     description: r.description || '',
     type: r.type || 'individual',
     dueDate: r.dueDate || '',
+    classDateId: r.classDateId || '',
+    maxScore: r.maxScore != null ? r.maxScore : 10,
     createdAt: r.createdAt,
     isOpen: !!r.isOpen
   };
@@ -338,13 +365,17 @@ function rowToSubmission(r) {
     link: r.link || '',
     fileUrl: r.fileUrl || '',
     fileName: r.fileName || '',
-    submittedAt: r.submittedAt
+    submittedAt: r.submittedAt,
+    score: r.score != null ? r.score : null,
+    feedback: r.feedback || '',
+    gradedAt: r.gradedAt || '',
+    gradedBy: r.gradedBy || ''
   };
 }
 
 module.exports = {
   DATA_DIR, UPLOADS_DIR,
-  SUBMISSIONS_DIR,
+  SUBMISSIONS_DIR, MATERIALS_DIR,
   DEFAULT_CLASS_DATES, DEFAULT_GROUPS,
   slugify,
   gen4digit,
@@ -539,25 +570,40 @@ module.exports = {
     return rowToAssignment(db.prepare('SELECT * FROM assignments WHERE id = ?').get(id));
   },
   createAssignment(a) {
-    const r = db.prepare(`INSERT INTO assignments (classroomId, title, description, type, dueDate, createdAt, isOpen)
-                          VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+    const r = db.prepare(`INSERT INTO assignments (classroomId, title, description, type, dueDate, createdAt, isOpen, classDateId, maxScore)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       a.classroomId, a.title, a.description || '',
       a.type || 'individual',
       a.dueDate || '',
-      a.createdAt, a.isOpen ? 1 : 0
+      a.createdAt, a.isOpen ? 1 : 0,
+      a.classDateId || '',
+      a.maxScore != null ? a.maxScore : 10
     );
     return this.getAssignment(r.lastInsertRowid);
   },
   updateAssignment(id, fields) {
     const sets = [], vals = [];
-    ['title', 'description', 'type', 'dueDate'].forEach(k => {
+    ['title', 'description', 'type', 'dueDate', 'classDateId'].forEach(k => {
       if (fields[k] !== undefined) { sets.push(`${k} = ?`); vals.push(String(fields[k])); }
     });
+    if (fields.maxScore !== undefined) { sets.push('maxScore = ?'); vals.push(Number(fields.maxScore) || 0); }
     if (fields.isOpen !== undefined) { sets.push('isOpen = ?'); vals.push(fields.isOpen ? 1 : 0); }
     if (!sets.length) return this.getAssignment(id);
     vals.push(id);
     db.prepare(`UPDATE assignments SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     return this.getAssignment(id);
+  },
+  getAssignmentsByDate(classroomId, classDateId) {
+    return db.prepare('SELECT * FROM assignments WHERE classroomId = ? AND classDateId = ? ORDER BY createdAt DESC')
+      .all(classroomId, classDateId).map(rowToAssignment);
+  },
+  getSubmissionById(id) {
+    return rowToSubmission(db.prepare('SELECT * FROM submissions WHERE id = ?').get(id));
+  },
+  gradeSubmission(submissionId, score, feedback, gradedBy) {
+    db.prepare(`UPDATE submissions SET score = ?, feedback = ?, gradedAt = ?, gradedBy = ? WHERE id = ?`)
+      .run(score, feedback || '', new Date().toISOString(), gradedBy || 'admin', submissionId);
+    return this.getSubmissionById(submissionId);
   },
   deleteAssignment(id) {
     const subs = db.prepare('SELECT fileUrl FROM submissions WHERE assignmentId = ?').all(id);

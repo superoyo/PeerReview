@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ปฏิทิน</title>
+  <link rel="stylesheet" href="/style.css?v=4" />
+</head>
+<body>
+  <div class="container wide">
+    <a href="" id="backLink" class="hint" style="text-decoration:none;">← กลับหน้าห้องเรียน</a>
+    <h1 style="margin-top:6px;">📅 ปฏิทินการเรียน</h1>
+    <div id="userInfo" class="user-info" style="margin-top: 12px;">-</div>
+
+    <div class="sched-header" style="margin-top: 18px;">
+      <button class="secondary" id="prevMonthBtn">◀</button>
+      <h2 id="monthLabel" style="margin: 0; min-width: 220px; text-align: center;">-</h2>
+      <button class="secondary" id="nextMonthBtn">▶</button>
+      <button class="primary" id="todayBtn" style="margin-left: 8px;">วันนี้</button>
+    </div>
+    <p class="hint" style="text-align:center;">คลิกที่วันเพื่อดูรายละเอียด เอกสาร และส่งงาน</p>
+
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+
+  <div id="modalRoot"></div>
+
+  <script>
+    const cid = window.location.pathname.split('/')[2];
+    const userKey = `pr_user_${cid}`;
+    const user = JSON.parse(localStorage.getItem(userKey) || 'null');
+    if (!user) window.location.href = `/c/${cid}`;
+    document.getElementById('backLink').href = `/c/${cid}/feed`;
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+    function pad2(n) { return String(n).padStart(2, '0'); }
+    function dateIdToTH(id) {
+      try { return new Date(id + 'T00:00:00').toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
+      catch (e) { return id; }
+    }
+    function fmtDateTime(s) {
+      if (!s) return '';
+      const d = new Date(s);
+      return isNaN(d) ? s : d.toLocaleString('th-TH', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
+    const userIdent = encodeURIComponent(user.phone || user.studentId);
+    let data = null;
+    let schedMonth = null;
+
+    function fullName() {
+      return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.name || user.studentId || user.phone;
+    }
+    document.getElementById('userInfo').innerHTML = `
+      <b>${escapeHtml(fullName())}</b>
+      ${user.nickname ? `(${escapeHtml(user.nickname)})` : ''}
+      ${user.group ? ` &nbsp;|&nbsp; <b>กลุ่ม:</b> ${escapeHtml(user.group)}` : ''}
+    `;
+
+    async function load() {
+      try {
+        const res = await fetch(`/api/c/${cid}/student-calendar/${userIdent}`);
+        if (!res.ok) {
+          document.getElementById('calGrid').innerHTML = '<div class="message error">โหลดข้อมูลไม่ได้</div>';
+          return;
+        }
+        data = await res.json();
+        if (!schedMonth) {
+          const dateIds = (data.classDates || []).map(d => d.id).sort();
+          const first = dateIds[0] || new Date().toISOString().slice(0, 10);
+          const [y, m] = first.split('-').map(Number);
+          schedMonth = { year: y, month: m - 1 };
+        }
+        renderCalendar();
+      } catch (e) {
+        document.getElementById('calGrid').innerHTML = `<div class="message error">${escapeHtml(e.message)}</div>`;
+      }
+    }
+
+    function renderCalendar() {
+      const dateMap = Object.fromEntries((data.classDates || []).map(d => [d.id, d]));
+      const assignsByDate = {};
+      (data.assignments || []).forEach(a => {
+        const k = a.classDateId || (a.dueDate ? a.dueDate.slice(0, 10) : '');
+        if (!k) return;
+        if (!assignsByDate[k]) assignsByDate[k] = [];
+        assignsByDate[k].push(a);
+      });
+
+      const { year, month } = schedMonth;
+      const first = new Date(year, month, 1);
+      const startDow = first.getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      document.getElementById('monthLabel').textContent =
+        first.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+
+      const grid = document.getElementById('calGrid');
+      let html = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
+        .map(d => `<div class="cal-dow">${d}</div>`).join('');
+
+      for (let i = 0; i < startDow; i++) html += '<div class="cal-cell empty"></div>';
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+      for (let d = 1; d <= daysInMonth; d++) {
+        const id = `${year}-${pad2(month + 1)}-${pad2(d)}`;
+        const cd = dateMap[id];
+        const assigns = assignsByDate[id] || [];
+        const hasAssignment = assigns.length > 0;
+        const submittedCount = assigns.filter(a => a.mySubmission).length;
+        const cls = ['cal-cell'];
+        if (cd) cls.push('class-day');
+        if (hasAssignment) cls.push('has-assignment');
+        if (id === todayStr) cls.push('today');
+        const preview = cd && cd.content ? `<div class="cal-content">${escapeHtml(cd.content.slice(0, 30))}</div>` : '';
+        const time = cd && (cd.startTime || cd.endTime)
+          ? `<div class="cal-time">⏰ ${escapeHtml(cd.startTime || '')}${cd.endTime ? '-' + escapeHtml(cd.endTime) : ''}</div>`
+          : '';
+        const matsBadge = cd && cd.materials && cd.materials.length > 0
+          ? `<span class="cal-badge">📎 ${cd.materials.length}</span>` : '';
+        const assignBadge = hasAssignment
+          ? `<span class="cal-badge ${submittedCount === assigns.length ? 'done' : 'pending'}">📝 ${submittedCount}/${assigns.length}</span>` : '';
+        html += `<div class="${cls.join(' ')}" data-id="${id}">
+          <div class="cal-num">${d}</div>
+          ${preview}${time}
+          <div class="cal-badges">${matsBadge}${assignBadge}</div>
+        </div>`;
+      }
+
+      grid.innerHTML = html;
+      grid.querySelectorAll('.cal-cell:not(.empty)').forEach(cell => {
+        cell.onclick = () => openDayDetail(cell.dataset.id);
+      });
+    }
+
+    function openDayDetail(dateId) {
+      const cd = (data.classDates || []).find(d => d.id === dateId);
+      const assigns = (data.assignments || []).filter(a => {
+        const k = a.classDateId || (a.dueDate ? a.dueDate.slice(0, 10) : '');
+        return k === dateId;
+      });
+
+      const root = document.getElementById('modalRoot');
+      const detailHtml = cd ? `
+        ${cd.content ? `<div class="dd-row"><b>เนื้อหา:</b> ${escapeHtml(cd.content)}</div>` : ''}
+        ${(cd.startTime || cd.endTime) ? `<div class="dd-row"><b>เวลา:</b> ${escapeHtml(cd.startTime || '')}${cd.endTime ? ' - ' + escapeHtml(cd.endTime) : ''}</div>` : ''}
+        ${cd.instructor ? `<div class="dd-row"><b>วิทยากร:</b> ${escapeHtml(cd.instructor)}</div>` : ''}
+      ` : '<div class="hint">ไม่ใช่วันเรียน</div>';
+
+      const matsHtml = (cd && cd.materials && cd.materials.length > 0)
+        ? `<h3 style="margin-top: 18px;">📎 เอกสาร</h3>
+           <ul class="mat-list">
+             ${cd.materials.map(m => `
+               <li><a href="${escapeHtml(m.url)}" target="_blank" download>📄 ${escapeHtml(m.name)}</a>
+                 <span class="hint" style="font-size:11px;">${fmtDateTime(m.uploadedAt)}</span></li>
+             `).join('')}
+           </ul>`
+        : '';
+
+      const assignsHtml = assigns.length > 0
+        ? `<h3 style="margin-top: 18px;">📝 งาน (${assigns.length})</h3>
+           ${assigns.map(a => renderAssignmentInModal(a)).join('')}`
+        : '';
+
+      root.innerHTML = `
+        <div class="modal-backdrop" id="modalBg">
+          <div class="modal" style="max-width: 720px;" onclick="event.stopPropagation()">
+            <button class="secondary modal-close" id="closeModal">ปิด</button>
+            <h2 style="margin-bottom: 12px;">${escapeHtml(dateIdToTH(dateId))}</h2>
+            ${detailHtml}
+            ${matsHtml}
+            ${assignsHtml}
+          </div>
+        </div>
+      `;
+      const close = () => { root.innerHTML = ''; };
+      document.getElementById('closeModal').onclick = close;
+      document.getElementById('modalBg').onclick = (e) => { if (e.target.id === 'modalBg') close(); };
+      assigns.forEach(a => bindAssignmentForm(a.id));
+    }
+
+    function renderAssignmentInModal(a) {
+      const sub = a.mySubmission;
+      const typeBadge = a.type === 'group' ? '<span class="tag-group">งานกลุ่ม</span>' : '<span class="tag-individual">งานเดี่ยว</span>';
+      const closed = !a.isOpen;
+      const hasGrade = sub && sub.score != null;
+      const fileLink = sub && sub.fileUrl ? `<a href="${escapeHtml(sub.fileUrl)}" target="_blank">📎 ${escapeHtml(sub.fileName || 'ไฟล์ที่แนบ')}</a>` : '';
+      const linkLink = sub && sub.link ? `<a href="${escapeHtml(sub.link)}" target="_blank">🔗 ${escapeHtml(sub.link)}</a>` : '';
+      const status = sub
+        ? `<span class="badge-success">✓ ส่งแล้ว ${fmtDateTime(sub.submittedAt)}</span>`
+        : `<span class="badge-pending">ยังไม่ได้ส่ง</span>`;
+      const gradeBox = hasGrade ? `
+        <div class="grade-box">
+          <div><b>คะแนน:</b> <span class="score-pill">${escapeHtml(String(sub.score))}/${a.maxScore || 10}</span></div>
+          ${sub.feedback ? `<div style="margin-top:6px;"><b>ความคิดเห็น:</b> ${escapeHtml(sub.feedback)}</div>` : ''}
+          ${sub.gradedAt ? `<div class="hint" style="font-size:11px; margin-top:4px;">ตรวจเมื่อ ${fmtDateTime(sub.gradedAt)}</div>` : ''}
+        </div>
+      ` : '';
+      return `
+        <div class="card assignment-card" style="margin-top: 10px;">
+          <div class="ac-title">${escapeHtml(a.title)} ${typeBadge}</div>
+          <div class="ac-meta">${status}${closed ? ' · <span style="color:#c33;">ปิดรับส่ง</span>' : ''}</div>
+          ${a.description ? `<div class="ac-desc">${escapeHtml(a.description)}</div>` : ''}
+          ${sub ? `
+            <div class="ac-current">
+              <div class="hint">งานที่ส่ง:</div>
+              ${sub.content ? `<div class="ac-text">${escapeHtml(sub.content)}</div>` : ''}
+              ${linkLink ? `<div>${linkLink}</div>` : ''}
+              ${fileLink ? `<div>${fileLink}</div>` : ''}
+            </div>
+          ` : ''}
+          ${gradeBox}
+          ${closed ? '' : `
+            <details class="ac-form-details" ${sub ? '' : 'open'}>
+              <summary>${sub ? 'ส่งใหม่ / แก้ไขงาน' : 'ส่งงาน'}</summary>
+              <form class="ac-form" data-aid="${a.id}">
+                <label>ข้อความ / คำอธิบาย</label>
+                <textarea name="content" rows="3" placeholder="เนื้อหา / คำอธิบาย"></textarea>
+                <label>ลิงก์</label>
+                <input type="url" name="link" placeholder="https://..." />
+                <label>แนบไฟล์ (ไม่เกิน 10 MB)</label>
+                <input type="file" name="file" />
+                <button type="submit" class="primary">ส่งงาน</button>
+                <div class="ac-msg"></div>
+              </form>
+            </details>
+          `}
+        </div>
+      `;
+    }
+
+    function bindAssignmentForm(aid) {
+      const form = document.querySelector(`form.ac-form[data-aid="${aid}"]`);
+      if (!form) return;
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const msgEl = form.querySelector('.ac-msg');
+        msgEl.innerHTML = '';
+        const fd = new FormData(form);
+        const file = fd.get('file');
+        let fileData = null, fileName = null;
+        if (file && file.size > 0) {
+          if (file.size > 10 * 1024 * 1024) {
+            msgEl.innerHTML = '<div class="message error">ไฟล์ใหญ่เกิน 10 MB</div>';
+            return;
+          }
+          fileName = file.name;
+          fileData = await new Promise((res, rej) => {
+            const r = new FileReader();
+            r.onload = () => res(r.result);
+            r.onerror = rej;
+            r.readAsDataURL(file);
+          });
+        }
+        const payload = {
+          studentId: user.phone || user.studentId,
+          content: fd.get('content') || '',
+          link: fd.get('link') || '',
+          fileData, fileName
+        };
+        msgEl.innerHTML = '<div class="message info">กำลังส่ง...</div>';
+        try {
+          const res = await fetch(`/api/c/${cid}/assignments/${aid}/submit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const d = await res.json();
+          if (!res.ok) { msgEl.innerHTML = `<div class="message error">${escapeHtml(d.error)}</div>`; return; }
+          msgEl.innerHTML = '<div class="message success">ส่งสำเร็จ</div>';
+          await load();
+        } catch (e) {
+          msgEl.innerHTML = `<div class="message error">${escapeHtml(e.message)}</div>`;
+        }
+      };
+    }
+
+    document.getElementById('prevMonthBtn').onclick = () => {
+      schedMonth.month--;
+      if (schedMonth.month < 0) { schedMonth.month = 11; schedMonth.year--; }
+      renderCalendar();
+    };
+    document.getElementById('nextMonthBtn').onclick = () => {
+      schedMonth.month++;
+      if (schedMonth.month > 11) { schedMonth.month = 0; schedMonth.year++; }
+      renderCalendar();
+    };
+    document.getElementById('todayBtn').onclick = () => {
+      const t = new Date();
+      schedMonth = { year: t.getFullYear(), month: t.getMonth() };
+      renderCalendar();
+    };
+
+    load();
+  </script>
+</body>
+</html>

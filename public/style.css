@@ -552,6 +552,77 @@ table tbody tr:hover { background: #f9faff; }
   .cal-cell { min-height: 50px; padding: 4px; font-size: 11px; }
   .cal-content, .cal-time { display: none; }
 }
+
+/* Materials list */
+.mat-existing {
+  background: #f5f7fc;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+.mat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #e6eaf2;
+}
+.mat-item:last-child { border-bottom: none; }
+.mat-item a { color: #4555a6; text-decoration: none; }
+.mat-item a:hover { text-decoration: underline; }
+.mat-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+.mat-list li {
+  padding: 8px 12px;
+  background: #f5f7fc;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mat-list a {
+  color: #4555a6;
+  text-decoration: none;
+  font-weight: 500;
+}
+.mat-list a:hover { text-decoration: underline; }
+
+/* Grade box (student view) */
+.grade-box {
+  background: #fff8e0;
+  border: 1px solid #f0d860;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+/* Calendar badges (student) */
+.cal-badges {
+  display: flex;
+  gap: 4px;
+  margin-top: auto;
+  flex-wrap: wrap;
+}
+.cal-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #eef0ff;
+  color: #4555a6;
+}
+.cal-badge.done { background: #e8f6ec; color: #1e7e3a; }
+.cal-badge.pending { background: #fff0e0; color: #b86500; }
+.cal-cell.has-assignment { border-color: #ffcb8a; }
+
+.dd-row { margin-bottom: 6px; font-size: 14px; color: #444; }
+.dd-row b { color: #222; }
 .cr-actions {
   display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start;
 }
