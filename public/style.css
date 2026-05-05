@@ -371,49 +371,154 @@ table tbody tr:hover { background: #f9faff; }
   border-radius: 10px;
 }
 
-/* Homepage — yellow theme */
+/* Homepage — themeable via CSS variables */
 .home-body {
-  background: linear-gradient(135deg, #ffd54f 0%, #ffb74d 50%, #ff9800 100%);
+  /* Default theme: sunny (yellow-orange) */
+  --th-from: #ffd54f;
+  --th-mid: #ffb74d;
+  --th-to: #ff9800;
+  --th-container: #fffdf5;
+  --th-border: #ffe082;
+  --th-heading: #e65100;
+  --th-subtitle: #bf6800;
+  --th-code: #ff9800;
+  --th-card: #fffef9;
+  --th-name: #5d3a00;
+  --th-uni: #b87f00;
+  --th-desc: #7a5a00;
+  --th-open: #d97900;
+  --th-login-bg: #fff3c4;
+  --th-login-text: #b86500;
+  --th-login-border: #ffd54f;
+
+  background: linear-gradient(135deg, var(--th-from) 0%, var(--th-mid) 50%, var(--th-to) 100%);
   min-height: 100vh;
 }
-.home-body .container {
-  background: #fffdf5;
-  border: 2px solid #ffe082;
-  box-shadow: 0 20px 60px rgba(255, 152, 0, 0.25);
+.home-body.theme-sunny { /* uses defaults above */ }
+.home-body.theme-calm {
+  --th-from: #81d4fa; --th-mid: #4fc3f7; --th-to: #0288d1;
+  --th-container: #f5fbff; --th-border: #b3e5fc;
+  --th-heading: #01579b; --th-subtitle: #0277bd;
+  --th-code: #0288d1; --th-card: #fbfeff;
+  --th-name: #013a6d; --th-uni: #0277bd; --th-desc: #014a82;
+  --th-open: #0277bd;
+  --th-login-bg: #e1f5fe; --th-login-text: #01579b; --th-login-border: #81d4fa;
 }
-.home-body h1 {
-  color: #e65100;
-  font-size: 28px;
+.home-body.theme-fresh {
+  --th-from: #a5d6a7; --th-mid: #81c784; --th-to: #43a047;
+  --th-container: #f5fdf6; --th-border: #c8e6c9;
+  --th-heading: #1b5e20; --th-subtitle: #2e7d32;
+  --th-code: #43a047; --th-card: #fbfffa;
+  --th-name: #1b3d1d; --th-uni: #2e7d32; --th-desc: #355a36;
+  --th-open: #2e7d32;
+  --th-login-bg: #e8f5e9; --th-login-text: #1b5e20; --th-login-border: #a5d6a7;
 }
-.home-body .subtitle { color: #bf6800; }
-.home-body .login-btn {
-  background: #fff3c4;
-  color: #b86500;
-  border: 2px solid #ffd54f;
+.home-body.theme-cute {
+  --th-from: #f8bbd0; --th-mid: #f48fb1; --th-to: #ec407a;
+  --th-container: #fff5f8; --th-border: #f8bbd0;
+  --th-heading: #ad1457; --th-subtitle: #c2185b;
+  --th-code: #ec407a; --th-card: #fffafc;
+  --th-name: #6b0e3a; --th-uni: #c2185b; --th-desc: #88154d;
+  --th-open: #ec407a;
+  --th-login-bg: #fce4ec; --th-login-text: #ad1457; --th-login-border: #f8bbd0;
 }
-.home-body .login-btn:hover {
-  background: #ff9800;
-  color: #fff;
-  border-color: #ff9800;
+.home-body.theme-creative {
+  --th-from: #b39ddb; --th-mid: #9575cd; --th-to: #5e35b1;
+  --th-container: #f7f5fb; --th-border: #d1c4e9;
+  --th-heading: #311b92; --th-subtitle: #4527a0;
+  --th-code: #5e35b1; --th-card: #fbf9fd;
+  --th-name: #1e0d5e; --th-uni: #4527a0; --th-desc: #2c1a72;
+  --th-open: #5e35b1;
+  --th-login-bg: #ede7f6; --th-login-text: #311b92; --th-login-border: #b39ddb;
+}
+.home-body.theme-minimal {
+  --th-from: #455a64; --th-mid: #546e7a; --th-to: #78909c;
+  --th-container: #ffffff; --th-border: #e0e0e0;
+  --th-heading: #263238; --th-subtitle: #546e7a;
+  --th-code: #455a64; --th-card: #fafafa;
+  --th-name: #263238; --th-uni: #607d8b; --th-desc: #455a64;
+  --th-open: #455a64;
+  --th-login-bg: #eceff1; --th-login-text: #263238; --th-login-border: #b0bec5;
 }
 
-/* Classroom cards in yellow theme */
+.home-body .container {
+  background: var(--th-container);
+  border: 2px solid var(--th-border);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+.home-body h1 { color: var(--th-heading); font-size: 28px; }
+.home-body .subtitle { color: var(--th-subtitle); }
+.home-body .login-btn {
+  background: var(--th-login-bg);
+  color: var(--th-login-text);
+  border: 2px solid var(--th-login-border);
+}
+.home-body .login-btn:hover {
+  background: var(--th-code);
+  color: #fff;
+  border-color: var(--th-code);
+}
+
 .home-body .classroom-card {
-  background: #fffef9;
-  border: 2px solid #ffe082;
+  background: var(--th-card);
+  border: 2px solid var(--th-border);
 }
 .home-body .classroom-card:hover {
-  border-color: #ff9800;
-  box-shadow: 0 8px 20px rgba(255, 152, 0, 0.25);
+  border-color: var(--th-code);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
 }
-.home-body .cc-code {
-  background: #ff9800;
-  color: #fff;
+.home-body .cc-code { background: var(--th-code); color: #fff; }
+.home-body .cc-name { color: var(--th-name); }
+.home-body .cc-uni { color: var(--th-uni); }
+.home-body .cc-desc { color: var(--th-desc); }
+.home-body .cc-meta .open { color: var(--th-open); }
+
+/* Theme picker */
+.theme-picker {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 14px 0 8px;
+  flex-wrap: wrap;
 }
-.home-body .cc-name { color: #5d3a00; }
-.home-body .cc-uni { color: #b87f00; }
-.home-body .cc-desc { color: #7a5a00; }
-.home-body .cc-meta .open { color: #d97900; }
+.theme-picker-label {
+  font-size: 13px;
+  color: var(--th-subtitle);
+  margin-right: 4px;
+}
+.theme-dot {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  position: relative;
+  font-size: 0;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+.theme-dot:hover { transform: scale(1.15); }
+.theme-dot.active {
+  border-color: #fff;
+  box-shadow: 0 0 0 3px var(--th-heading), 0 4px 12px rgba(0,0,0,0.3);
+  transform: scale(1.1);
+}
+.theme-dot.theme-sunny { background: linear-gradient(135deg, #ffd54f, #ff9800); }
+.theme-dot.theme-calm { background: linear-gradient(135deg, #81d4fa, #0288d1); }
+.theme-dot.theme-fresh { background: linear-gradient(135deg, #a5d6a7, #43a047); }
+.theme-dot.theme-cute { background: linear-gradient(135deg, #f8bbd0, #ec407a); }
+.theme-dot.theme-creative { background: linear-gradient(135deg, #b39ddb, #5e35b1); }
+.theme-dot.theme-minimal { background: linear-gradient(135deg, #78909c, #455a64); }
+.theme-dot::after {
+  content: attr(data-emoji);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
 
 /* Classroom listing (public landing) */
 .classroom-list {
