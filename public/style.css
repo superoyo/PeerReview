@@ -371,6 +371,50 @@ table tbody tr:hover { background: #f9faff; }
   border-radius: 10px;
 }
 
+/* Homepage — yellow theme */
+.home-body {
+  background: linear-gradient(135deg, #ffd54f 0%, #ffb74d 50%, #ff9800 100%);
+  min-height: 100vh;
+}
+.home-body .container {
+  background: #fffdf5;
+  border: 2px solid #ffe082;
+  box-shadow: 0 20px 60px rgba(255, 152, 0, 0.25);
+}
+.home-body h1 {
+  color: #e65100;
+  font-size: 28px;
+}
+.home-body .subtitle { color: #bf6800; }
+.home-body .login-btn {
+  background: #fff3c4;
+  color: #b86500;
+  border: 2px solid #ffd54f;
+}
+.home-body .login-btn:hover {
+  background: #ff9800;
+  color: #fff;
+  border-color: #ff9800;
+}
+
+/* Classroom cards in yellow theme */
+.home-body .classroom-card {
+  background: #fffef9;
+  border: 2px solid #ffe082;
+}
+.home-body .classroom-card:hover {
+  border-color: #ff9800;
+  box-shadow: 0 8px 20px rgba(255, 152, 0, 0.25);
+}
+.home-body .cc-code {
+  background: #ff9800;
+  color: #fff;
+}
+.home-body .cc-name { color: #5d3a00; }
+.home-body .cc-uni { color: #b87f00; }
+.home-body .cc-desc { color: #7a5a00; }
+.home-body .cc-meta .open { color: #d97900; }
+
 /* Classroom listing (public landing) */
 .classroom-list {
   display: grid;
