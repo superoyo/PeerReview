@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ระบบหลังบ้าน</title>
-  <link rel="stylesheet" href="/style.css?v=7" />
+  <link rel="stylesheet" href="/style.css?v=8" />
 </head>
 <body>
   <div id="loginView" class="container">
@@ -65,6 +65,7 @@
         <button id="toggleReg" class="secondary">เปิด/ปิด ลงทะเบียน</button>
         <button id="toggleVote" class="success">เปิดให้โหวต</button>
         <button id="randomizeBtn" class="secondary">สุ่มกลุ่มใหม่ทั้งหมด</button>
+        <button id="profileFieldsBtn" class="secondary">ตั้งค่าฟิลด์โปรไฟล์</button>
         <a id="dashLink" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:12px 24px;border-radius:8px;background:#f0f2f8;color:#444;font-size:15px;font-weight:500;">เปิด Dashboard</a>
         <a id="regLink" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:12px 24px;border-radius:8px;background:#f0f2f8;color:#444;font-size:15px;font-weight:500;">หน้าลงทะเบียน</a>
         <button id="exportBtn" class="secondary">Export CSV</button>
@@ -118,6 +119,36 @@
     }
     function modeLabel(m) {
       return ({ self: 'เลือกเอง', random: 'สุ่ม', admin: 'ผู้สอนกำหนด' })[m || 'self'] || m;
+    }
+    function defaultProfileFields() {
+      return [
+        { key: 'name',       label: 'ชื่อ - นามสกุล', enabled: true,  required: false },
+        { key: 'nickname',   label: 'ชื่อเล่น',         enabled: true,  required: false },
+        { key: 'studentId',  label: 'รหัสนักศึกษา',    enabled: true,  required: false },
+        { key: 'faculty',    label: 'คณะ',              enabled: false, required: false },
+        { key: 'department', label: 'สาขา',             enabled: false, required: false },
+        { key: 'university', label: 'มหาวิทยาลัย',     enabled: false, required: false },
+        { key: 'company',    label: 'บริษัท',           enabled: false, required: false },
+        { key: 'position',   label: 'ตำแหน่ง',          enabled: false, required: false }
+      ];
+    }
+    function renderProfileFieldsRows(containerId, fields) {
+      const tbody = document.getElementById(containerId);
+      tbody.innerHTML = fields.map(f => `
+        <tr data-key="${f.key}">
+          <td>${escapeHtml(f.label)}</td>
+          <td style="text-align:center;"><input type="checkbox" data-role="enabled" ${f.enabled ? 'checked' : ''} /></td>
+          <td style="text-align:center;"><input type="checkbox" data-role="required" ${f.required ? 'checked' : ''} /></td>
+        </tr>
+      `).join('');
+    }
+    function collectProfileFields(containerId) {
+      const tbody = document.getElementById(containerId);
+      return Array.from(tbody.querySelectorAll('tr[data-key]')).map(tr => ({
+        key: tr.dataset.key,
+        enabled: tr.querySelector('input[data-role="enabled"]').checked,
+        required: tr.querySelector('input[data-role="required"]').checked
+      }));
     }
     function formatDate(iso) {
       if (!iso) return '-';
@@ -260,6 +291,14 @@
                 <input type="checkbox" id="nfPR" checked />
                 <span>เปิดใช้ Peer Review (มีกลุ่ม โหวตคะแนน เช็คชื่อ)</span>
               </label>
+
+              <h3 style="margin-top: 18px;">ข้อมูลที่ขอจากผู้ลงทะเบียน</h3>
+              <p class="hint" style="margin: 0 0 8px;">เลือกฟิลด์ที่ต้องการเก็บ และระบุว่าบังคับหรือไม่</p>
+              <table class="profile-fields-table">
+                <thead><tr><th>ฟิลด์</th><th>เก็บ</th><th>บังคับ</th></tr></thead>
+                <tbody id="nfProfileFields"></tbody>
+              </table>
+
               <div id="prOptions">
                 <label>จำนวนกลุ่ม</label>
                 <input type="number" id="nfGroupCount" value="4" min="2" max="20" />
@@ -301,6 +340,8 @@
       const prCheck = document.getElementById('nfPR');
       const prOpts = document.getElementById('prOptions');
       prCheck.onchange = () => { prOpts.style.display = prCheck.checked ? '' : 'none'; };
+      // Render default profileFields rows
+      renderProfileFieldsRows('nfProfileFields', defaultProfileFields());
       document.getElementById('newForm').onsubmit = async (e) => {
         e.preventDefault();
         const mode = document.querySelector('input[name="nfMode"]:checked').value;
@@ -311,7 +352,8 @@
           university: document.getElementById('nfUni').value.trim(),
           peerReviewEnabled: prCheck.checked,
           groupCount: parseInt(document.getElementById('nfGroupCount').value) || 4,
-          groupAssignmentMode: mode
+          groupAssignmentMode: mode,
+          profileFields: collectProfileFields('nfProfileFields')
         };
         const res = await authFetch('/api/admin/classrooms', {
           method: 'POST',
@@ -370,6 +412,59 @@
       if (!r.ok) { alert('error'); return; }
       await loadClassMeta();
     };
+    document.getElementById('profileFieldsBtn').onclick = () => openProfileFieldsModal();
+
+    function openProfileFieldsModal() {
+      const fields = (currentClass && currentClass.profileFields) || defaultProfileFields();
+      const uni = (currentClass && currentClass.university) || 'มหาวิทยาลัยกรุงเทพ';
+      const root = document.getElementById('modalRoot');
+      root.innerHTML = `
+        <div class="modal-backdrop" id="modalBg">
+          <div class="modal" onclick="event.stopPropagation()">
+            <button class="secondary modal-close" id="closeModal">ปิด</button>
+            <h3>ตั้งค่าฟิลด์โปรไฟล์</h3>
+            <p class="hint">เลือกข้อมูลที่ต้องการให้ผู้ลงทะเบียนกรอก และตั้งบังคับ/ไม่บังคับ</p>
+            <form id="pfForm">
+              <label>ค่า Default ของฟิลด์ "มหาวิทยาลัย" (ใส่อัตโนมัติเมื่อนักศึกษาลงทะเบียน)</label>
+              <input type="text" id="pfUni" value="${escapeHtml(uni)}" />
+
+              <h3 style="margin-top: 18px;">ฟิลด์ที่ขอเก็บ</h3>
+              <table class="profile-fields-table">
+                <thead><tr><th>ฟิลด์</th><th>เก็บ</th><th>บังคับ</th></tr></thead>
+                <tbody id="pfRows"></tbody>
+              </table>
+
+              <button type="submit" class="primary" style="margin-top: 14px;">บันทึก</button>
+              <div id="pfMsg"></div>
+            </form>
+          </div>
+        </div>
+      `;
+      const close = () => { root.innerHTML = ''; };
+      document.getElementById('closeModal').onclick = close;
+      document.getElementById('modalBg').onclick = (e) => { if (e.target.id === 'modalBg') close(); };
+      renderProfileFieldsRows('pfRows', fields);
+
+      document.getElementById('pfForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const payload = {
+          profileFields: collectProfileFields('pfRows'),
+          university: document.getElementById('pfUni').value.trim()
+        };
+        const r = await authFetch(`/api/admin/classrooms/${cid}/profile-fields`, {
+          method: 'PATCH', body: JSON.stringify(payload)
+        });
+        const d = await r.json();
+        if (!r.ok) {
+          document.getElementById('pfMsg').innerHTML = `<div class="message error">${escapeHtml(d.error || 'error')}</div>`;
+          return;
+        }
+        currentClass = d.classroom;
+        document.getElementById('pfMsg').innerHTML = '<div class="message success">บันทึกแล้ว</div>';
+        setTimeout(close, 600);
+      };
+    }
+
     document.getElementById('randomizeBtn').onclick = async () => {
       if (!confirm('สุ่มกลุ่มใหม่ให้นักศึกษาทุกคน? (กลุ่มเดิมจะถูกเขียนทับ)')) return;
       const r = await authFetch(`/api/c/${cid}/admin/randomize-groups`, { method: 'POST' });

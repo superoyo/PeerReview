@@ -791,6 +791,30 @@ table tbody tr:hover { background: #f9faff; }
 
 .dd-row { margin-bottom: 6px; font-size: 14px; color: #444; }
 .dd-row b { color: #222; }
+
+/* Profile fields config table */
+.profile-fields-table {
+  width: 100%;
+  margin: 8px 0;
+}
+.profile-fields-table th {
+  background: #f7f8fc;
+  padding: 8px 12px;
+  font-size: 12px;
+  text-align: left;
+}
+.profile-fields-table th:nth-child(2),
+.profile-fields-table th:nth-child(3) { text-align: center; width: 70px; }
+.profile-fields-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e6eaf2;
+  font-size: 14px;
+}
+.profile-fields-table input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
 .cr-actions {
   display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start;
 }

@@ -139,12 +139,24 @@ app.post('/api/c/:cid/check-phone', loadClassroom, (req, res) => {
   }
 });
 
+// Validate enroll code without registering — used in step 2 of registration UI
+app.post('/api/c/:cid/validate-enroll-code', loadClassroom, (req, res) => {
+  const code = String((req.body && req.body.enrollCode) || '').trim();
+  if (!code) return res.status(400).json({ error: 'กรุณากรอกรหัสคลาส' });
+  if (code !== req.classroom.enrollCode) {
+    return res.status(403).json({ error: 'รหัสคลาสไม่ถูกต้อง' });
+  }
+  res.json({ ok: true });
+});
+
 app.post('/api/c/:cid/register', loadClassroom, (req, res) => {
   const c = req.classroom;
   if (!c.registrationOpen) {
     return res.status(403).json({ error: 'ห้องเรียนนี้ปิดรับลงทะเบียน' });
   }
-  const { phone, studentId, firstName, lastName, nickname, group, enrollCode } = req.body || {};
+  const body = req.body || {};
+  const { phone, studentId, firstName, lastName, nickname, group, enrollCode,
+          faculty, department, university, company, position } = body;
   const ph = normalizePhone(phone);
   if (!ph) return res.status(400).json({ error: 'กรุณากรอกเบอร์มือถือ' });
   if (!enrollCode) return res.status(400).json({ error: 'กรุณากรอกรหัสคลาส 4 หลัก' });
@@ -157,12 +169,29 @@ app.post('/api/c/:cid/register', loadClassroom, (req, res) => {
     return res.json({ ok: true, user: existing, message: 'เข้าสู่ระบบสำเร็จ' });
   }
 
-  // New registration: optional fields
-  const sid = String(studentId || '').trim();
+  // New registration: validate required fields based on classroom profileFields config
   const fn = String(firstName || '').trim();
   const ln = String(lastName || '').trim();
+  const sid = String(studentId || '').trim();
   const nick = String(nickname || '').trim();
+  const fac = String(faculty || '').trim();
+  const dept = String(department || '').trim();
+  const uni = String(university || '').trim() || (c.university || '');
+  const co = String(company || '').trim();
+  const pos = String(position || '').trim();
   const grpStr = group ? String(group).trim() : '';
+
+  const fieldVals = {
+    name: (fn || ln) ? 'has' : '',
+    nickname: nick, studentId: sid, faculty: fac, department: dept,
+    university: uni, company: co, position: pos
+  };
+  for (const f of (c.profileFields || [])) {
+    if (!f.enabled || !f.required) continue;
+    if (!fieldVals[f.key]) {
+      return res.status(400).json({ error: `กรุณากรอก ${f.label}` });
+    }
+  }
 
   let assignedGroup = '';
   if (c.peerReviewEnabled) {
@@ -190,6 +219,11 @@ app.post('/api/c/:cid/register', loadClassroom, (req, res) => {
       lastName: ln,
       nickname: nick,
       group: assignedGroup,
+      faculty: fac,
+      department: dept,
+      university: uni,
+      company: co,
+      position: pos,
       registeredAt: new Date().toISOString()
     });
     let message = 'ลงทะเบียนสำเร็จ';
@@ -217,7 +251,8 @@ app.patch('/api/c/:cid/me/:phone', loadClassroom, (req, res) => {
   // Only allow specific fields. Group is NOT allowed here — set at registration only,
   // or by admin via /api/c/:cid/admin/set-group
   const allowed = {};
-  ['firstName', 'lastName', 'nickname', 'studentId'].forEach(k => {
+  ['firstName', 'lastName', 'nickname', 'studentId',
+   'faculty', 'department', 'university', 'company', 'position'].forEach(k => {
     if (fields[k] !== undefined) allowed[k] = String(fields[k]).trim();
   });
   const updated = db.updateUser(req.classroom.id, req.params.phone, allowed);
@@ -386,17 +421,25 @@ app.get('/api/admin/classrooms', requireAdmin, (req, res) => {
 });
 
 app.post('/api/admin/classrooms', requireAdmin, (req, res) => {
-  const { code, name, description, university, peerReviewEnabled, groupCount, groupAssignmentMode } = req.body || {};
+  const { code, name, description, university, peerReviewEnabled, groupCount, groupAssignmentMode, profileFields } = req.body || {};
   if (!code || !name) return res.status(400).json({ error: 'กรุณากรอกรหัสและชื่อวิชา' });
   let id = db.slugify(code);
   let suffix = 1;
   while (db.classroomIdExists(id)) {
     id = `${db.slugify(code)}-${++suffix}`;
   }
-  // Compute validGroups from groupCount (default 4)
   const n = Number.isFinite(+groupCount) && +groupCount > 0 ? Math.min(20, Math.floor(+groupCount)) : 4;
   const validGroups = Array.from({ length: n }, (_, i) => String(i + 1));
   const mode = ['self', 'random', 'admin'].includes(groupAssignmentMode) ? groupAssignmentMode : 'self';
+  // Validate profileFields structure
+  let pf = null;
+  if (Array.isArray(profileFields)) {
+    pf = profileFields.map(f => ({
+      key: String(f.key || ''),
+      enabled: !!f.enabled,
+      required: !!f.required
+    })).filter(f => f.key);
+  }
   const c = db.createClassroom({
     id,
     code: String(code).trim(),
@@ -408,9 +451,26 @@ app.post('/api/admin/classrooms', requireAdmin, (req, res) => {
     votingOpen: false,
     peerReviewEnabled: peerReviewEnabled !== false,
     validGroups,
-    groupAssignmentMode: mode
+    groupAssignmentMode: mode,
+    profileFields: pf
   });
   res.json({ ok: true, classroom: c });
+});
+
+// Update profileFields config of a classroom
+app.patch('/api/admin/classrooms/:cid/profile-fields', requireAdmin, loadClassroom, (req, res) => {
+  const { profileFields, university } = req.body || {};
+  const fields = {};
+  if (Array.isArray(profileFields)) {
+    fields.profileFields = profileFields.map(f => ({
+      key: String(f.key || ''),
+      enabled: !!f.enabled,
+      required: !!f.required
+    })).filter(f => f.key);
+  }
+  if (university !== undefined) fields.university = String(university);
+  const updated = db.updateClassroom(req.classroom.id, fields);
+  res.json({ ok: true, classroom: updated });
 });
 
 app.post('/api/admin/classrooms/:cid/regenerate-enroll-code', requireAdmin, loadClassroom, (req, res) => {

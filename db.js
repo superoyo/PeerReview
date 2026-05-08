@@ -21,6 +21,17 @@ const DEFAULT_CLASS_DATES = [
 ];
 const DEFAULT_GROUPS = ['1', '2', '3', '4'];
 
+const DEFAULT_PROFILE_FIELDS = [
+  { key: 'name',       label: 'ชื่อ - นามสกุล',  enabled: true,  required: false },
+  { key: 'nickname',   label: 'ชื่อเล่น',          enabled: true,  required: false },
+  { key: 'studentId',  label: 'รหัสนักศึกษา',     enabled: true,  required: false },
+  { key: 'faculty',    label: 'คณะ',               enabled: false, required: false },
+  { key: 'department', label: 'สาขา',              enabled: false, required: false },
+  { key: 'university', label: 'มหาวิทยาลัย',      enabled: false, required: false },
+  { key: 'company',    label: 'บริษัท',           enabled: false, required: false },
+  { key: 'position',   label: 'ตำแหน่ง',          enabled: false, required: false },
+];
+
 // ---------- Classrooms table ----------
 db.exec(`
   CREATE TABLE IF NOT EXISTS classrooms (
@@ -57,6 +68,19 @@ try {
       db.prepare(`UPDATE classrooms SET enrollCode = ? WHERE id = ?`).run(gen4digit(), c.id);
     });
   }
+  if (!ccols.includes('profileFields')) {
+    db.exec(`ALTER TABLE classrooms ADD COLUMN profileFields TEXT`);
+  }
+} catch (e) { /* ignore */ }
+
+// Migrate users table: add new profile columns
+try {
+  const ucols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+  if (!ucols.includes('faculty'))    db.exec(`ALTER TABLE users ADD COLUMN faculty TEXT`);
+  if (!ucols.includes('department')) db.exec(`ALTER TABLE users ADD COLUMN department TEXT`);
+  if (!ucols.includes('university')) db.exec(`ALTER TABLE users ADD COLUMN university TEXT`);
+  if (!ucols.includes('company'))    db.exec(`ALTER TABLE users ADD COLUMN company TEXT`);
+  if (!ucols.includes('position'))   db.exec(`ALTER TABLE users ADD COLUMN position TEXT`);
 } catch (e) { /* ignore */ }
 
 // ---------- Migrate users / votes to classroom-scoped schema ----------
@@ -270,8 +294,23 @@ function migrateFromJson() {
 migrateFromJson();
 
 // ---------- Helpers ----------
+function mergeProfileFields(stored) {
+  // Merge stored config with defaults — keep only valid keys, fill in missing keys
+  const storedMap = {};
+  if (Array.isArray(stored)) stored.forEach(f => { if (f && f.key) storedMap[f.key] = f; });
+  return DEFAULT_PROFILE_FIELDS.map(d => {
+    const s = storedMap[d.key];
+    if (!s) return { ...d };
+    return { ...d, enabled: !!s.enabled, required: !!s.required };
+  });
+}
+
 function rowToClassroom(r) {
   if (!r) return null;
+  let pf = null;
+  if (r.profileFields) {
+    try { pf = JSON.parse(r.profileFields); } catch (e) { pf = null; }
+  }
   return {
     id: r.id,
     code: r.code,
@@ -286,7 +325,8 @@ function rowToClassroom(r) {
     attendancePercent: r.attendancePercent ?? 5,
     validGroups: r.validGroups ? JSON.parse(r.validGroups) : DEFAULT_GROUPS,
     groupAssignmentMode: r.groupAssignmentMode || 'self',
-    enrollCode: r.enrollCode || ''
+    enrollCode: r.enrollCode || '',
+    profileFields: mergeProfileFields(pf)
   };
 }
 
@@ -310,6 +350,11 @@ function rowToUser(r) {
     nickname: r.nickname || '',
     name: r.name || ((firstName || lastName) ? `${firstName} ${lastName}`.trim() : ''),
     group: r.groupNum || '',
+    faculty: r.faculty || '',
+    department: r.department || '',
+    university: r.university || '',
+    company: r.company || '',
+    position: r.position || '',
     registeredAt: r.registeredAt
   };
   if (r.selfie) u.selfie = r.selfie;
@@ -376,7 +421,7 @@ function rowToSubmission(r) {
 module.exports = {
   DATA_DIR, UPLOADS_DIR,
   SUBMISSIONS_DIR, MATERIALS_DIR,
-  DEFAULT_CLASS_DATES, DEFAULT_GROUPS,
+  DEFAULT_CLASS_DATES, DEFAULT_GROUPS, DEFAULT_PROFILE_FIELDS,
   slugify,
   gen4digit,
 
@@ -392,8 +437,8 @@ module.exports = {
   },
   createClassroom(c) {
     db.prepare(`INSERT INTO classrooms
-      (id, code, name, description, university, createdAt, registrationOpen, votingOpen, peerReviewEnabled, classDates, attendancePercent, validGroups, groupAssignmentMode, enrollCode)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      (id, code, name, description, university, createdAt, registrationOpen, votingOpen, peerReviewEnabled, classDates, attendancePercent, validGroups, groupAssignmentMode, enrollCode, profileFields)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       c.id, c.code, c.name,
       c.description || '',
       c.university || 'มหาวิทยาลัยกรุงเทพ',
@@ -405,7 +450,8 @@ module.exports = {
       c.attendancePercent ?? 5,
       JSON.stringify(c.validGroups || DEFAULT_GROUPS),
       c.groupAssignmentMode || 'self',
-      c.enrollCode || gen4digit()
+      c.enrollCode || gen4digit(),
+      JSON.stringify(c.profileFields || DEFAULT_PROFILE_FIELDS)
     );
     return this.getClassroom(c.id);
   },
@@ -434,6 +480,9 @@ module.exports = {
     }
     if (fields.validGroups !== undefined) {
       updates.push('validGroups = ?'); values.push(JSON.stringify(fields.validGroups));
+    }
+    if (fields.profileFields !== undefined) {
+      updates.push('profileFields = ?'); values.push(JSON.stringify(fields.profileFields));
     }
     if (!updates.length) return this.getClassroom(id);
     values.push(id);
@@ -468,18 +517,21 @@ module.exports = {
     return rowToUser(db.prepare('SELECT * FROM users WHERE classroomId = ? AND phone = ?').get(classroomId, phone));
   },
   addUser(classroomId, u) {
-    db.prepare(`INSERT INTO users (classroomId, phone, studentId, firstName, lastName, nickname, name, groupNum, registeredAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    db.prepare(`INSERT INTO users (classroomId, phone, studentId, firstName, lastName, nickname, name, groupNum, registeredAt, faculty, department, university, company, position)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       classroomId, u.phone || '', u.studentId || '',
       u.firstName || '', u.lastName || '', u.nickname || '',
       u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim(),
-      u.group || '', u.registeredAt
+      u.group || '', u.registeredAt,
+      u.faculty || '', u.department || '', u.university || '',
+      u.company || '', u.position || ''
     );
     return this.getUser(classroomId, u.phone || u.studentId);
   },
   updateUser(classroomId, key, fields) {
     const sets = [], vals = [];
-    ['firstName', 'lastName', 'nickname', 'studentId'].forEach(k => {
+    ['firstName', 'lastName', 'nickname', 'studentId',
+     'faculty', 'department', 'university', 'company', 'position'].forEach(k => {
       if (fields[k] !== undefined) { sets.push(`${k} = ?`); vals.push(String(fields[k])); }
     });
     if (fields.firstName !== undefined || fields.lastName !== undefined) {

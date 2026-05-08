@@ -4,14 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ลงทะเบียนเข้าห้องเรียน</title>
-  <link rel="stylesheet" href="/style.css?v=7" />
+  <link rel="stylesheet" href="/style.css?v=8" />
 </head>
 <body>
   <div class="container">
     <div id="cInfo" class="user-info" style="margin-bottom: 18px;">กำลังโหลด...</div>
 
     <h1>ลงทะเบียน / เข้าสู่ระบบ</h1>
-    <p class="subtitle">กรอกเบอร์มือถือเพื่อเริ่ม</p>
+    <p class="subtitle" id="stepLabel">ขั้นที่ 1: กรอกเบอร์มือถือ</p>
 
     <!-- Step 1: Phone -->
     <form id="phoneForm">
@@ -20,46 +20,27 @@
       <button type="submit" class="primary">ถัดไป</button>
     </form>
 
-    <!-- Step 2: New user fields (hidden initially) -->
+    <!-- Step 2: Enroll code -->
+    <form id="codeForm" style="display:none;">
+      <p class="hint" style="margin-top:8px;">🔑 กรุณากรอกรหัสคลาส 4 หลัก ที่อาจารย์แจ้ง</p>
+      <label for="enrollCode">รหัสคลาส 4 หลัก *</label>
+      <input type="text" id="enrollCode" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="0000" required style="font-size: 22px; letter-spacing: 8px; text-align: center;" />
+      <button type="submit" class="primary" id="codeSubmitBtn">ถัดไป</button>
+    </form>
+
+    <!-- Step 3: Profile fields (only for new users) -->
     <form id="profileForm" style="display:none;">
-      <p class="hint" style="margin-top:8px;">📝 ครั้งแรกในคลาสนี้ — กรอกข้อมูลโปรไฟล์ (เว้นว่างได้)</p>
-
-      <label for="studentId">รหัสนักศึกษา <span class="opt">(ไม่บังคับ)</span></label>
-      <input type="text" id="studentId" placeholder="เช่น 65010001" />
-
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-        <div>
-          <label for="firstName">ชื่อ <span class="opt">(ไม่บังคับ)</span></label>
-          <input type="text" id="firstName" />
-        </div>
-        <div>
-          <label for="lastName">นามสกุล <span class="opt">(ไม่บังคับ)</span></label>
-          <input type="text" id="lastName" />
-        </div>
-      </div>
-
-      <label for="nickname">ชื่อเล่น <span class="opt">(ไม่บังคับ)</span></label>
-      <input type="text" id="nickname" />
+      <p class="hint" id="profileHint" style="margin-top:8px;">📝 กรอกข้อมูลโปรไฟล์</p>
+      <div id="profileFieldsContainer"></div>
 
       <div id="groupSection" style="display:none;">
-        <label>เลือกกลุ่ม</label>
+        <label>เลือกกลุ่ม *</label>
         <div class="group-buttons" id="groupButtons"></div>
         <input type="hidden" id="group" />
       </div>
       <div id="groupNote" class="hint" style="display:none; margin-top: 6px;"></div>
 
-      <div style="display: flex; gap: 10px; margin-top: 8px;">
-        <button type="button" class="secondary" id="skipProfileBtn" style="flex: 1; margin: 0;">ข้าม</button>
-        <button type="submit" class="primary" style="flex: 2; margin: 0;">ถัดไป</button>
-      </div>
-    </form>
-
-    <!-- Step 3: Enroll code -->
-    <form id="codeForm" style="display:none;">
-      <p class="hint" style="margin-top:8px;">🔑 กรุณากรอกรหัสคลาส 4 หลัก ที่อาจารย์แจ้ง</p>
-      <label for="enrollCode">รหัสคลาส 4 หลัก *</label>
-      <input type="text" id="enrollCode" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="0000" required style="font-size: 22px; letter-spacing: 8px; text-align: center;" />
-      <button type="submit" class="primary">เข้าสู่คลาส</button>
+      <button type="submit" class="primary" style="margin-top: 14px;">เข้าสู่คลาส</button>
     </form>
 
     <div id="message"></div>
@@ -73,14 +54,15 @@
     const cid = window.location.pathname.split('/')[2];
     const cInfo = document.getElementById('cInfo');
     const phoneForm = document.getElementById('phoneForm');
-    const profileForm = document.getElementById('profileForm');
     const codeForm = document.getElementById('codeForm');
+    const profileForm = document.getElementById('profileForm');
+    const stepLabel = document.getElementById('stepLabel');
     const msg = document.getElementById('message');
     const groupSection = document.getElementById('groupSection');
     const groupButtons = document.getElementById('groupButtons');
     const groupInput = document.getElementById('group');
     let classroom = null;
-    let isReturning = false; // true if phone exists
+    let isReturning = false;
 
     function escapeHtml(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
@@ -119,7 +101,42 @@
       }
     }
 
-    function buildGroupSection() {
+    function buildProfileForm() {
+      const container = document.getElementById('profileFieldsContainer');
+      const fields = (classroom.profileFields || []).filter(f => f.enabled);
+      container.innerHTML = fields.map(f => {
+        const star = f.required ? ' <span style="color:#c33;">*</span>' : ' <span class="opt">(ไม่บังคับ)</span>';
+        const req = f.required ? 'required' : '';
+        if (f.key === 'name') {
+          return `
+            <label>${escapeHtml(f.label)}${star}</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <input type="text" name="firstName" placeholder="ชื่อ" ${req} />
+              <input type="text" name="lastName" placeholder="นามสกุล" ${req} />
+            </div>
+          `;
+        }
+        if (f.key === 'university') {
+          return `
+            <label>${escapeHtml(f.label)}${star}</label>
+            <input type="text" name="university" value="${escapeHtml(classroom.university || '')}" ${req} />
+          `;
+        }
+        const placeholder = ({
+          studentId: 'เช่น 65010001',
+          nickname: 'ชื่อเล่น',
+          faculty: 'เช่น คณะวิศวกรรมศาสตร์',
+          department: 'เช่น สาขาวิทยาการคอมพิวเตอร์',
+          company: 'ชื่อบริษัท',
+          position: 'ตำแหน่ง'
+        })[f.key] || '';
+        return `
+          <label>${escapeHtml(f.label)}${star}</label>
+          <input type="text" name="${escapeHtml(f.key)}" placeholder="${escapeHtml(placeholder)}" ${req} />
+        `;
+      }).join('');
+
+      // Group section
       if (!classroom.peerReviewEnabled) return;
       const mode = classroom.groupAssignmentMode || 'self';
       const note = document.getElementById('groupNote');
@@ -144,6 +161,7 @@
       }
     }
 
+    // Step 1: Phone
     phoneForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       msg.innerHTML = '';
@@ -160,49 +178,20 @@
         });
         const data = await res.json();
         phoneForm.style.display = 'none';
-        if (data.exists) {
-          isReturning = true;
-          msg.innerHTML = `<div class="message info">เคยลงทะเบียนแล้ว — กรอกรหัสคลาสเพื่อเข้าระบบ</div>`;
-          codeForm.style.display = '';
-          document.getElementById('enrollCode').focus();
-        } else {
-          isReturning = false;
-          buildGroupSection();
-          profileForm.style.display = '';
-          document.getElementById('firstName').focus();
-        }
+        isReturning = !!data.exists;
+        codeForm.style.display = '';
+        stepLabel.textContent = 'ขั้นที่ 2: กรอกรหัสคลาส 4 หลัก';
+        msg.innerHTML = isReturning
+          ? `<div class="message info">เคยลงทะเบียนแล้ว — กรอกรหัสคลาสเพื่อเข้าระบบ</div>`
+          : '';
+        document.getElementById('codeSubmitBtn').textContent = isReturning ? 'เข้าสู่คลาส' : 'ถัดไป';
+        document.getElementById('enrollCode').focus();
       } catch (err) {
         msg.innerHTML = `<div class="message error">${escapeHtml(err.message)}</div>`;
       }
     });
 
-    profileForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      msg.innerHTML = '';
-      const mode = classroom && classroom.groupAssignmentMode || 'self';
-      if (classroom && classroom.peerReviewEnabled && mode === 'self' && !groupInput.value) {
-        msg.innerHTML = `<div class="message error">กรุณาเลือกกลุ่ม (หรือกด "ข้าม" เพื่อให้ผู้สอนกำหนดทีหลัง)</div>`;
-        return;
-      }
-      profileForm.style.display = 'none';
-      codeForm.style.display = '';
-      document.getElementById('enrollCode').focus();
-    });
-
-    document.getElementById('skipProfileBtn').onclick = () => {
-      msg.innerHTML = '';
-      // Clear all optional fields
-      document.getElementById('studentId').value = '';
-      document.getElementById('firstName').value = '';
-      document.getElementById('lastName').value = '';
-      document.getElementById('nickname').value = '';
-      groupInput.value = '';
-      groupButtons.querySelectorAll('.group-btn').forEach(b => b.classList.remove('selected'));
-      profileForm.style.display = 'none';
-      codeForm.style.display = '';
-      document.getElementById('enrollCode').focus();
-    };
-
+    // Step 2: Enroll code
     codeForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       msg.innerHTML = '';
@@ -211,17 +200,60 @@
         msg.innerHTML = `<div class="message error">รหัสต้องเป็นตัวเลข 4 หลัก</div>`;
         return;
       }
+      // Validate code first
+      try {
+        const r = await fetch(`/api/c/${cid}/validate-enroll-code`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enrollCode: code })
+        });
+        const d = await r.json();
+        if (!r.ok) {
+          msg.innerHTML = `<div class="message error">${escapeHtml(d.error)}</div>`;
+          return;
+        }
+      } catch (err) {
+        msg.innerHTML = `<div class="message error">${escapeHtml(err.message)}</div>`;
+        return;
+      }
+
+      // If returning user, register directly (login)
+      if (isReturning) {
+        await doRegister({});
+        return;
+      }
+      // New user: show profile form
+      codeForm.style.display = 'none';
+      buildProfileForm();
+      profileForm.style.display = '';
+      stepLabel.textContent = 'ขั้นที่ 3: กรอกข้อมูลโปรไฟล์';
+    });
+
+    // Step 3: Profile (new users)
+    profileForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.innerHTML = '';
+      const fd = new FormData(profileForm);
+      const profileData = {};
+      ['firstName', 'lastName', 'studentId', 'nickname', 'faculty', 'department', 'university', 'company', 'position'].forEach(k => {
+        const v = fd.get(k);
+        if (v != null) profileData[k] = String(v).trim();
+      });
+      const mode = classroom && classroom.groupAssignmentMode || 'self';
+      if (classroom && classroom.peerReviewEnabled && mode === 'self' && !groupInput.value) {
+        msg.innerHTML = `<div class="message error">กรุณาเลือกกลุ่ม</div>`;
+        return;
+      }
+      profileData.group = groupInput.value || '';
+      await doRegister(profileData);
+    });
+
+    async function doRegister(extra) {
       const payload = {
         phone: document.getElementById('phone').value.replace(/[^\d+]/g, '').trim(),
-        enrollCode: code
+        enrollCode: document.getElementById('enrollCode').value.trim(),
+        ...extra
       };
-      if (!isReturning) {
-        payload.studentId = document.getElementById('studentId').value.trim();
-        payload.firstName = document.getElementById('firstName').value.trim();
-        payload.lastName = document.getElementById('lastName').value.trim();
-        payload.nickname = document.getElementById('nickname').value.trim();
-        payload.group = groupInput.value || '';
-      }
       try {
         const res = await fetch(`/api/c/${cid}/register`, {
           method: 'POST',
@@ -240,7 +272,7 @@
       } catch (err) {
         msg.innerHTML = `<div class="message error">${escapeHtml(err.message)}</div>`;
       }
-    });
+    }
 
     loadClassroom();
   </script>
