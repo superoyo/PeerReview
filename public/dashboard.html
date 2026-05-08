@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard</title>
-  <link rel="stylesheet" href="/style.css?v=12" />
+  <link rel="stylesheet" href="/style.css?v=13" />
 </head>
 <body class="dashboard-body">
   <div class="dashboard-fullscreen">
@@ -113,8 +113,9 @@
               ? `<img src="${escapeHtml(m.selfie)}?t=${Date.now()}" alt="" />`
               : `<div class="no-photo">?</div>`;
             const tooltip = `${m.studentId || ''} ${m.fullName || m.name}${m.hasVoted ? ' · โหวตแล้ว' : ''}`;
+            const userKey = m.phone || m.studentId || '';
             return `
-              <div class="${cls.join(' ')}" title="${escapeHtml(tooltip)}">
+              <div class="${cls.join(' ')}" data-user="${escapeHtml(userKey)}" title="${escapeHtml(tooltip)}" style="cursor: pointer;">
                 <div class="member-photo">${photo}${badge}</div>
                 ${renderMemberInfo(m)}
               </div>`;
@@ -160,6 +161,53 @@
       groupsEl.querySelectorAll('[data-pick]').forEach(card => {
         card.onclick = () => { expandedGroup = card.dataset.pick; renderGroups(); };
       });
+      // Click on member card → show details popup
+      groupsEl.querySelectorAll('.member-card[data-user]').forEach(mc => {
+        mc.onclick = (e) => {
+          e.stopPropagation();
+          const userKey = mc.dataset.user;
+          for (const g of lastData.groups) {
+            const found = (lastData.grouped[g] || []).find(m => (m.phone || m.studentId) === userKey);
+            if (found) { showMemberDetail(found); return; }
+          }
+        };
+      });
+    }
+
+    function showMemberDetail(m) {
+      const modal = document.createElement('div');
+      modal.className = 'photo-modal';
+      const fullName = `${m.firstName || ''} ${m.lastName || ''}`.trim() || m.fullName || m.name || '-';
+      modal.innerHTML = `
+        <div class="member-detail-modal" onclick="event.stopPropagation()">
+          <button class="md-close-btn" type="button" title="ปิด">✕</button>
+          <div class="md-photo-wrap">
+            ${m.selfie
+              ? `<img class="md-photo" src="${escapeHtml(m.selfie)}" alt="" />`
+              : `<div class="md-photo no-photo big">?</div>`}
+            ${m.hasVoted ? '<div class="md-vote-badge" title="โหวตเสร็จแล้ว">✓</div>' : ''}
+          </div>
+          <h2 class="md-name">${escapeHtml(fullName)}</h2>
+          ${m.nickname ? `<div class="md-nick">(${escapeHtml(m.nickname)})</div>` : ''}
+          <ul class="md-info">
+            ${m.studentId ? `<li><b>รหัสนักศึกษา:</b> ${escapeHtml(m.studentId)}</li>` : ''}
+            ${m.faculty ? `<li><b>คณะ:</b> ${escapeHtml(m.faculty)}</li>` : ''}
+            ${m.department ? `<li><b>สาขา:</b> ${escapeHtml(m.department)}</li>` : ''}
+            ${m.university ? `<li><b>มหาวิทยาลัย:</b> ${escapeHtml(m.university)}</li>` : ''}
+            ${m.company ? `<li><b>บริษัท:</b> ${escapeHtml(m.company)}</li>` : ''}
+            ${m.position ? `<li><b>ตำแหน่ง:</b> ${escapeHtml(m.position)}</li>` : ''}
+            ${m.hasVoted ? '<li class="md-voted">✓ โหวตเสร็จแล้ว</li>' : ''}
+          </ul>
+        </div>
+      `;
+      const close = () => modal.remove();
+      modal.onclick = (e) => { if (e.target === modal) close(); };
+      modal.querySelector('.md-close-btn').onclick = close;
+      const escHandler = (e) => {
+        if (e.key === 'Escape') { close(); document.removeEventListener('keydown', escHandler); }
+      };
+      document.addEventListener('keydown', escHandler);
+      document.body.appendChild(modal);
     }
 
     load();
