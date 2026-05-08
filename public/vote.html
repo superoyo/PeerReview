@@ -55,20 +55,8 @@
 
     let scores = {};
     let peers = [];
-    let classDates = [];
-    let attendance = new Set();
     let myState = null;
     let pollTimer = null;
-    let savingAttendance = false;
-
-    async function loadClassDates() {
-      if (classDates.length) return;
-      try {
-        const res = await fetch(`/api/c/${cid}/class-dates`);
-        const data = await res.json();
-        classDates = data.dates || [];
-      } catch (e) { classDates = []; }
-    }
 
     async function loadMe() {
       try {
@@ -80,13 +68,12 @@
         }
         if (!res.ok) return false;
         myState = await res.json();
-        attendance = new Set(myState.attendance || []);
         return true;
       } catch (e) { return false; }
     }
 
     async function init() {
-      await Promise.all([loadClassDates(), loadMe()]);
+      await loadMe();
       render();
     }
 
@@ -112,14 +99,12 @@
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
         if (!myState.user.group) {
           contentEl.innerHTML = `
-            ${attendanceSection(true)}
-            <div class="card" style="text-align: center; padding: 30px; margin-top: 14px;">
+            <div class="card" style="text-align: center; padding: 30px;">
               <h2 style="border:none;">รอผู้สอนกำหนดกลุ่ม</h2>
               <p style="color: #777; margin-top: 8px;">คุณยังไม่ได้รับการกำหนดกลุ่ม รอผู้สอนจัดให้ก่อน</p>
               <div style="margin-top: 18px; font-size: 28px;">📌</div>
             </div>
           `;
-          bindAttendanceChange();
           if (!pollTimer) pollTimer = setInterval(refreshState, 3000);
           return;
         }
@@ -130,70 +115,14 @@
       }
     }
 
-    function attendanceSection(editable) {
-      if (!classDates.length) return '';
-      const items = classDates.map(d => `
-        <label class="date-check">
-          <input type="checkbox" value="${escapeHtml(d.id)}" ${attendance.has(d.id) ? 'checked' : ''} ${editable ? '' : 'disabled'} />
-          <span>${escapeHtml(d.label)}</span>
-        </label>
-      `).join('');
-      const hint = editable
-        ? 'ติ๊กเฉพาะวันที่คุณมาเรียน · บันทึกอัตโนมัติ'
-        : 'บันทึกแล้ว ไม่สามารถแก้ไขได้';
-      return `
-        <h2>มาเรียนวันไหนบ้าง</h2>
-        <div class="card" style="padding: 14px;">
-          <div class="date-list">${items}</div>
-          <p class="hint" style="margin-top: 8px;">${hint}</p>
-          <p class="hint" id="attendStatus" style="min-height: 18px;"></p>
-        </div>
-      `;
-    }
-
-    function bindAttendanceChange() {
-      contentEl.querySelectorAll('.date-check input').forEach(cb => {
-        if (cb.disabled) return;
-        cb.onchange = async () => {
-          if (cb.checked) attendance.add(cb.value);
-          else attendance.delete(cb.value);
-          await saveAttendance();
-        };
-      });
-    }
-
-    async function saveAttendance() {
-      if (savingAttendance) return;
-      savingAttendance = true;
-      const status = document.getElementById('attendStatus');
-      if (status) { status.textContent = 'กำลังบันทึก...'; status.style.color = '#888'; }
-      try {
-        const res = await fetch(`/api/c/${cid}/attendance`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ studentId: user.phone || user.studentId, attendance: Array.from(attendance) })
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || 'บันทึกไม่สำเร็จ');
-        }
-        if (status) { status.textContent = `✓ บันทึกแล้ว (${attendance.size} วัน)`; status.style.color = '#27ae60'; }
-      } catch (e) {
-        if (status) { status.textContent = '✗ ' + e.message; status.style.color = '#c33'; }
-      } finally { savingAttendance = false; }
-    }
-
     function renderWaiting() {
       contentEl.innerHTML = `
-        ${attendanceSection(true)}
-        <div class="card" style="text-align: center; padding: 30px; margin-top: 14px;">
+        <div class="card" style="text-align: center; padding: 30px;">
           <h2 style="border:none;">รอระบบเปิดให้โหวต</h2>
-          <p style="color: #777; margin-top: 8px;">ติ๊กวันที่คุณมาเรียนได้เลย ระหว่างรอระบบเปิด</p>
-          <p style="color: #777;">หน้าจอจะอัปเดตอัตโนมัติเมื่อระบบเปิดให้โหวต</p>
+          <p style="color: #777; margin-top: 8px;">หน้าจอจะอัปเดตอัตโนมัติเมื่อระบบเปิดให้โหวต</p>
           <div style="margin-top: 18px; font-size: 28px;">⏳</div>
         </div>
       `;
-      bindAttendanceChange();
     }
 
     async function loadPeers() {
@@ -207,12 +136,10 @@
         peers = data.peers;
         if (peers.length === 0) {
           contentEl.innerHTML = `
-            ${attendanceSection(true)}
-            <div class="empty-state" style="margin-top: 14px;">
+            <div class="empty-state">
               ยังไม่มีเพื่อนในกลุ่ม "${escapeHtml(user.group)}" คนอื่นลงทะเบียน
             </div>
           `;
-          bindAttendanceChange();
           return;
         }
         renderPeers();
@@ -250,8 +177,7 @@
       contentEl.innerHTML = `
         <h2>ให้คะแนนเพื่อนในกลุ่ม (1 = น้อยสุด, 5 = มากสุด)</h2>
         ${peersHtml}
-        ${attendanceSection(true)}
-        <button class="primary" id="submitBtn" disabled>ยืนยันคะแนนและการเข้าเรียน</button>
+        <button class="primary" id="submitBtn" disabled>ยืนยันคะแนน</button>
         <p class="hint" id="progressHint">เลือกคะแนนให้ครบทุกคน (0/${peers.length})</p>
       `;
 
@@ -271,7 +197,6 @@
         el.onclick = () => openPhotoModal(el.dataset.photo, el.dataset.name);
       });
 
-      bindAttendanceChange();
       document.getElementById('submitBtn').onclick = submitVote;
     }
 
@@ -301,15 +226,10 @@
     }
 
     async function submitVote() {
-      const attendList = Array.from(attendance);
-      const summary = attendList.length
-        ? classDates.filter(d => attendance.has(d.id)).map(d => d.label).join(', ')
-        : '(ไม่ได้ติ๊กวันใดเลย)';
-      if (!confirm(`ยืนยันการให้คะแนน?\n\nวันที่มาเรียน: ${summary}\n\nเมื่อยืนยันแล้วไม่สามารถแก้ไขทั้งคะแนนและการเข้าเรียน`)) return;
+      if (!confirm('ยืนยันการให้คะแนน?\n\nเมื่อยืนยันแล้วไม่สามารถแก้ไข')) return;
       const payload = {
         voterId: user.phone || user.studentId,
-        scores: peers.map(p => { const k = p.phone || p.studentId; return { targetId: k, score: scores[k] }; }),
-        attendance: attendList
+        scores: peers.map(p => { const k = p.phone || p.studentId; return { targetId: k, score: scores[k] }; })
       };
       try {
         const res = await fetch(`/api/c/${cid}/vote`, {
@@ -327,20 +247,11 @@
     }
 
     function renderDone() {
-      const tags = classDates.map(d =>
-        attendance.has(d.id)
-          ? `<span class="attend-tag">${escapeHtml(d.label)}</span>`
-          : `<span class="attend-tag absent">${escapeHtml(d.label)}</span>`
-      ).join(' ');
       contentEl.innerHTML = `
         <div class="card" style="text-align: center; padding: 40px;">
           <h2 style="border:none; color:#27ae60;">ขอบคุณสำหรับการให้คะแนน</h2>
           <p style="color: #777; margin-top: 8px;">คุณได้ยืนยันคะแนนเรียบร้อยแล้ว</p>
           <div style="margin-top: 18px; font-size: 36px;">✓</div>
-          <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid #e6eaf2;">
-            <div style="margin-bottom: 10px; color: #555; font-size: 14px;">วันที่บันทึกไว้</div>
-            ${classDates.length > 0 ? tags : '<span style="color:#888;">-</span>'}
-          </div>
         </div>
       `;
     }
