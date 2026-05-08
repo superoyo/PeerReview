@@ -61,7 +61,11 @@
           el.innerHTML = `<div class="empty-state">ยังไม่มีห้องเรียน — รอผู้ดูแลสร้างห้องเรียนก่อน</div>`;
           return;
         }
-        el.innerHTML = data.classrooms.map(c => `
+        el.innerHTML = data.classrooms.map(c => {
+          const hasSession = !!localStorage.getItem(`pr_user_${c.id}`);
+          const enterUrl = hasSession ? `/c/${escapeHtml(c.id)}/feed` : `/c/${escapeHtml(c.id)}`;
+          const enterLabel = hasSession ? '➜ เข้าสู่คอร์ส' : '📝 ลงทะเบียน';
+          return `
           <div class="classroom-card">
             <div class="cc-code">${escapeHtml(c.code)}</div>
             <div class="cc-name">${escapeHtml(c.name)}</div>
@@ -74,11 +78,12 @@
               </span>
             </div>
             <div class="cc-actions">
-              <a href="/c/${escapeHtml(c.id)}" class="cc-btn cc-btn-primary">📝 ลงทะเบียน</a>
+              <a href="${enterUrl}" class="cc-btn cc-btn-primary">${enterLabel}</a>
               <a href="/c/${escapeHtml(c.id)}/dashboard" class="cc-btn cc-btn-secondary">📊 Dashboard</a>
             </div>
           </div>
-        `).join('');
+        `;
+        }).join('');
       } catch (e) {
         document.getElementById('list').innerHTML = `<div class="message error">โหลดข้อมูลไม่ได้</div>`;
       }
