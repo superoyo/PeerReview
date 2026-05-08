@@ -65,7 +65,7 @@
         <button id="toggleReg" class="secondary">เปิด/ปิด ลงทะเบียน</button>
         <button id="toggleVote" class="success">เปิดให้โหวต</button>
         <button id="randomizeBtn" class="secondary">สุ่มกลุ่มใหม่ทั้งหมด</button>
-        <button id="profileFieldsBtn" class="secondary">ตั้งค่าฟิลด์โปรไฟล์</button>
+        <button id="settingsBtn" class="secondary">⚙ ตั้งค่าวิชา</button>
         <a id="dashLink" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:12px 24px;border-radius:8px;background:#f0f2f8;color:#444;font-size:15px;font-weight:500;">เปิด Dashboard</a>
         <a id="regLink" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:12px 24px;border-radius:8px;background:#f0f2f8;color:#444;font-size:15px;font-weight:500;">หน้าลงทะเบียน</a>
         <button id="exportBtn" class="secondary">Export CSV</button>
@@ -431,30 +431,52 @@
       if (!r.ok) { alert('error'); return; }
       await loadClassMeta();
     };
-    document.getElementById('profileFieldsBtn').onclick = () => openProfileFieldsModal();
+    document.getElementById('settingsBtn').onclick = () => openSettingsModal();
 
-    function openProfileFieldsModal() {
-      const fields = (currentClass && currentClass.profileFields) || defaultProfileFields();
-      const uni = (currentClass && currentClass.university) || 'มหาวิทยาลัยกรุงเทพ';
+    function openSettingsModal() {
+      const c = currentClass || {};
+      const fields = c.profileFields || defaultProfileFields();
       const root = document.getElementById('modalRoot');
       root.innerHTML = `
         <div class="modal-backdrop" id="modalBg">
-          <div class="modal" onclick="event.stopPropagation()">
+          <div class="modal" style="max-width: 720px;" onclick="event.stopPropagation()">
             <button class="secondary modal-close" id="closeModal">ปิด</button>
-            <h3>ตั้งค่าฟิลด์โปรไฟล์</h3>
-            <p class="hint">เลือกข้อมูลที่ต้องการให้ผู้ลงทะเบียนกรอก และตั้งบังคับ/ไม่บังคับ</p>
-            <form id="pfForm">
-              <label>ค่า Default ของฟิลด์ "มหาวิทยาลัย" (ใส่อัตโนมัติเมื่อนักศึกษาลงทะเบียน)</label>
-              <input type="text" id="pfUni" value="${escapeHtml(uni)}" />
+            <h3>⚙ ตั้งค่าวิชา</h3>
+            <p class="hint">แก้ไขข้อมูลรายวิชาได้ทุกอย่าง ยกเว้นจำนวนกลุ่มและเงื่อนไขการจัดกลุ่ม</p>
+            <form id="settingsForm">
 
-              <h3 style="margin-top: 18px;">ฟิลด์ที่ขอเก็บ</h3>
+              <h3 style="margin-top: 14px;">ข้อมูลพื้นฐาน</h3>
+              <label>รหัสวิชา</label>
+              <input type="text" id="sCode" value="${escapeHtml(c.code || '')}" required />
+              <label>ชื่อวิชา</label>
+              <input type="text" id="sName" value="${escapeHtml(c.name || '')}" required />
+              <label>คำอธิบายรายวิชา</label>
+              <input type="text" id="sDesc" value="${escapeHtml(c.description || '')}" placeholder="ไม่บังคับ" />
+              <label>มหาวิทยาลัย (ใช้เป็น Default ของฟิลด์ "มหาวิทยาลัย")</label>
+              <input type="text" id="sUni" value="${escapeHtml(c.university || '')}" />
+
+              <label style="display:flex; align-items:center; gap:8px; margin-top:14px;">
+                <input type="checkbox" id="sPR" ${c.peerReviewEnabled ? 'checked' : ''} />
+                <span>เปิดใช้ Peer Review (มีกลุ่ม โหวตคะแนน เช็คชื่อ)</span>
+              </label>
+
+              <div class="locked-info">
+                <p style="margin: 0 0 4px;"><b>📌 กำหนดได้ครั้งเดียวตอนสร้างวิชา (แก้ไม่ได้)</b></p>
+                <ul style="margin: 0; padding-left: 20px;">
+                  <li>จำนวนกลุ่ม: <b>${(c.validGroups && c.validGroups.length) || 0}</b> กลุ่ม</li>
+                  <li>เงื่อนไขการจัดกลุ่ม: <b>${escapeHtml(modeLabel(c.groupAssignmentMode))}</b></li>
+                </ul>
+              </div>
+
+              <h3 style="margin-top: 18px;">ข้อมูลที่ขอจากผู้ลงทะเบียน</h3>
+              <p class="hint" style="margin-bottom: 8px;">เปิดเก็บฟิลด์ + ตั้งบังคับ/ไม่บังคับ</p>
               <table class="profile-fields-table">
                 <thead><tr><th>ฟิลด์</th><th>เก็บ</th><th>บังคับ</th></tr></thead>
-                <tbody id="pfRows"></tbody>
+                <tbody id="sProfileRows"></tbody>
               </table>
 
               <button type="submit" class="primary" style="margin-top: 14px;">บันทึก</button>
-              <div id="pfMsg"></div>
+              <div id="sMsg"></div>
             </form>
           </div>
         </div>
@@ -462,24 +484,29 @@
       const close = () => { root.innerHTML = ''; };
       document.getElementById('closeModal').onclick = close;
       document.getElementById('modalBg').onclick = (e) => { if (e.target.id === 'modalBg') close(); };
-      renderProfileFieldsRows('pfRows', fields);
+      renderProfileFieldsRows('sProfileRows', fields);
 
-      document.getElementById('pfForm').onsubmit = async (e) => {
+      document.getElementById('settingsForm').onsubmit = async (e) => {
         e.preventDefault();
         const payload = {
-          profileFields: collectProfileFields('pfRows'),
-          university: document.getElementById('pfUni').value.trim()
+          code: document.getElementById('sCode').value.trim(),
+          name: document.getElementById('sName').value.trim(),
+          description: document.getElementById('sDesc').value.trim(),
+          university: document.getElementById('sUni').value.trim(),
+          peerReviewEnabled: document.getElementById('sPR').checked,
+          profileFields: collectProfileFields('sProfileRows')
         };
-        const r = await authFetch(`/api/admin/classrooms/${cid}/profile-fields`, {
+        const r = await authFetch(`/api/admin/classrooms/${cid}`, {
           method: 'PATCH', body: JSON.stringify(payload)
         });
         const d = await r.json();
         if (!r.ok) {
-          document.getElementById('pfMsg').innerHTML = `<div class="message error">${escapeHtml(d.error || 'error')}</div>`;
+          document.getElementById('sMsg').innerHTML = `<div class="message error">${escapeHtml(d.error || 'error')}</div>`;
           return;
         }
         currentClass = d.classroom;
-        document.getElementById('pfMsg').innerHTML = '<div class="message success">บันทึกแล้ว</div>';
+        document.getElementById('sMsg').innerHTML = '<div class="message success">บันทึกแล้ว</div>';
+        await loadClassMeta();
         setTimeout(close, 600);
       };
     }

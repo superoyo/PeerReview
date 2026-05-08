@@ -816,6 +816,18 @@ table tbody tr:hover { background: #f9faff; }
   cursor: pointer;
 }
 
+.locked-info {
+  background: #fff8e0;
+  border: 1px dashed #d9b900;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 14px 0;
+  font-size: 13px;
+  color: #6b5400;
+}
+.locked-info ul { margin: 4px 0; }
+.locked-info b { color: #4a3800; }
+
 /* Toggle switch */
 .toggle-switch {
   position: relative;
