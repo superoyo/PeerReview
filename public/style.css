@@ -1448,6 +1448,99 @@ input.cell-edit.saved {
   flex-direction: column;
   min-height: 0;
   margin-bottom: 0;
+  position: relative;
+}
+
+/* Corner button: expand/close */
+.corner-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1.5px solid #d8dde6;
+  color: #555;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  transition: all 0.15s;
+  margin: 0;
+}
+.corner-btn:hover {
+  background: #667eea;
+  color: #fff;
+  border-color: #667eea;
+  transform: scale(1.1);
+}
+
+/* Expanded layout: 1 group full width on top, others as small row below */
+.groups-expanded {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+.expanded-area {
+  flex: 1;
+  min-height: 0;
+}
+.expanded-area .group-card {
+  height: 100%;
+}
+.expanded-area .group-card .member-grid {
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+}
+.expanded-area .mp-photo { width: 110px; height: 110px; }
+.expanded-area .member-name { font-size: 14px; }
+.expanded-area .member-id { font-size: 12px; }
+
+.others-row {
+  display: flex;
+  gap: 8px;
+  height: 130px;
+  flex-shrink: 0;
+}
+.others-row .group-card {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.others-row .group-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102,126,234,0.25);
+}
+.others-row .group-card .group-header {
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+}
+.others-row .group-card .group-header h2 { font-size: 13px; }
+.others-row .group-card .member-grid {
+  grid-template-columns: repeat(auto-fill, 32px);
+  gap: 3px;
+  overflow: hidden;
+  align-content: start;
+}
+.others-row .group-card .member-card {
+  padding: 1px;
+  background: transparent;
+}
+.others-row .group-card .mp-photo { width: 30px; height: 30px; }
+.others-row .group-card .member-name,
+.others-row .group-card .member-id { display: none; }
+.others-row .group-card .vote-badge {
+  width: 14px; height: 14px; min-width: 14px; min-height: 14px;
+  font-size: 9px; border-width: 1px;
 }
 .group-header {
   display: flex;
