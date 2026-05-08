@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ระบบหลังบ้าน</title>
-  <link rel="stylesheet" href="/style.css?v=17" />
+  <link rel="stylesheet" href="/style.css?v=18" />
 </head>
 <body>
   <div id="loginView" class="container">
@@ -666,6 +666,19 @@
     let schedMonth = null;
 
     function pad2(n) { return String(n).padStart(2, '0'); }
+    // Backward-compat: read entries from a classDate (old single-entry format → array of one)
+    function getEntries(cd) {
+      if (cd && Array.isArray(cd.entries) && cd.entries.length > 0) return cd.entries;
+      if (cd && (cd.content || cd.startTime || cd.endTime || cd.instructor)) {
+        return [{
+          content: cd.content || '',
+          startTime: cd.startTime || '',
+          endTime: cd.endTime || '',
+          instructor: cd.instructor || ''
+        }];
+      }
+      return [];
+    }
     function dateIdToTH(id) {
       try {
         const d = new Date(id + 'T00:00:00');
@@ -719,13 +732,16 @@
         const cls = ['cal-cell'];
         if (cd) cls.push('class-day');
         if (id === todayStr) cls.push('today');
-        const preview = cd && cd.content ? `<div class="cal-content">${escapeHtml(cd.content.slice(0, 30))}</div>` : '';
-        const time = cd && (cd.startTime || cd.endTime)
-          ? `<div class="cal-time">⏰ ${escapeHtml(cd.startTime || '')}${cd.endTime ? '-' + escapeHtml(cd.endTime) : ''}</div>`
+        const ents = getEntries(cd);
+        const firstE = ents[0] || null;
+        const preview = firstE && firstE.content ? `<div class="cal-content">${escapeHtml(firstE.content.slice(0, 30))}</div>` : '';
+        const time = firstE && (firstE.startTime || firstE.endTime)
+          ? `<div class="cal-time">⏰ ${escapeHtml(firstE.startTime || '')}${firstE.endTime ? '-' + escapeHtml(firstE.endTime) : ''}</div>`
           : '';
+        const moreBadge = ents.length > 1 ? `<div class="cal-time">+${ents.length - 1} รายการ</div>` : '';
         html += `<div class="${cls.join(' ')}" data-id="${id}">
           <div class="cal-num">${d}</div>
-          ${preview}${time}
+          ${preview}${time}${moreBadge}
         </div>`;
       }
 
@@ -742,21 +758,29 @@
         el.innerHTML = `<div class="empty-state">ยังไม่มีวันเรียน — คลิกบนปฏิทินเพื่อเพิ่ม</div>`;
         return;
       }
-      el.innerHTML = dates.map(d => `
+      el.innerHTML = dates.map(d => {
+        const ents = getEntries(d);
+        const body = ents.length === 0
+          ? '<span class="hint">ยังไม่ระบุรายละเอียด</span>'
+          : ents.map((e, i) => `
+            <div class="entry-line">
+              ${ents.length > 1 ? `<b class="entry-num-inline">[${i + 1}]</b>` : ''}
+              ${e.content ? `<div><b>เนื้อหา:</b> ${escapeHtml(e.content)}</div>` : ''}
+              ${(e.startTime || e.endTime) ? `<div><b>เวลา:</b> ${escapeHtml(e.startTime || '')}${e.endTime ? ' - ' + escapeHtml(e.endTime) : ''}</div>` : ''}
+              ${e.instructor ? `<div><b>วิทยากร:</b> ${escapeHtml(e.instructor)}</div>` : ''}
+            </div>
+          `).join('');
+        return `
         <div class="card sched-item" data-id="${escapeHtml(d.id)}">
           <div class="si-date">${escapeHtml(dateIdToTH(d.id))}</div>
-          <div class="si-body">
-            ${d.content ? `<div><b>เนื้อหา:</b> ${escapeHtml(d.content)}</div>` : ''}
-            ${(d.startTime || d.endTime) ? `<div><b>เวลา:</b> ${escapeHtml(d.startTime || '')}${d.endTime ? ' - ' + escapeHtml(d.endTime) : ''}</div>` : ''}
-            ${d.instructor ? `<div><b>วิทยากร:</b> ${escapeHtml(d.instructor)}</div>` : ''}
-            ${(!d.content && !d.startTime && !d.endTime && !d.instructor) ? '<span class="hint">ยังไม่ระบุรายละเอียด</span>' : ''}
-          </div>
+          <div class="si-body">${body}</div>
           <div style="display:flex; gap:6px; flex-wrap: wrap;">
             <button class="secondary" data-edit="${escapeHtml(d.id)}">แก้ไข</button>
             <button class="danger" data-del="${escapeHtml(d.id)}">ลบ</button>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
       el.querySelectorAll('button[data-edit]').forEach(b => b.onclick = () => openDateEditor(b.dataset.edit));
       el.querySelectorAll('button[data-del]').forEach(b => b.onclick = () => deleteClassDate(b.dataset.del));
     }
@@ -798,6 +822,10 @@
           </div>`
         : '<p class="hint">ยังไม่มีงานในวันนี้</p>';
 
+      // Initialize entries for editing
+      let modalEntries = getEntries(cd);
+      if (modalEntries.length === 0) modalEntries.push({ content: '', startTime: '', endTime: '', instructor: '' });
+
       root.innerHTML = `
         <div class="modal-backdrop" id="modalBg">
           <div class="modal" style="max-width: 720px;" onclick="event.stopPropagation()">
@@ -805,20 +833,8 @@
             <h3>${escapeHtml(dateIdToTH(dateId))}</h3>
             <p class="hint">${isExisting ? 'แก้ไขรายละเอียดวันเรียนนี้' : 'เพิ่มเป็นวันเรียน + กรอกรายละเอียด'}</p>
             <form id="dateForm">
-              <label>เนื้อหา / หัวข้อบรรยาย</label>
-              <textarea id="dContent" rows="3" placeholder="เช่น Introduction, การนำเสนอ Project, ฯลฯ">${escapeHtml(cd.content || '')}</textarea>
-              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                <div>
-                  <label>เวลาเริ่ม</label>
-                  <input type="time" id="dStart" value="${escapeHtml(cd.startTime || '')}" />
-                </div>
-                <div>
-                  <label>เวลาเลิก</label>
-                  <input type="time" id="dEnd" value="${escapeHtml(cd.endTime || '')}" />
-                </div>
-              </div>
-              <label>วิทยากร / ผู้สอน</label>
-              <input type="text" id="dInstr" placeholder="ชื่อวิทยากรประจำคาบ" value="${escapeHtml(cd.instructor || '')}" />
+              <div id="entriesContainer"></div>
+              <button type="button" class="secondary" id="addEntryBtn" style="margin-top: 8px;">+ เพิ่มรายการในวันนี้</button>
               <div style="display:flex; gap:8px; margin-top:14px;">
                 <button type="submit" class="primary" style="flex:1; margin:0;">${isExisting ? 'บันทึกรายละเอียด' : 'เพิ่มเป็นวันเรียน'}</button>
                 ${isExisting ? '<button type="button" class="danger" id="dDelBtn" style="margin:0;">ลบวันนี้ออก</button>' : ''}
@@ -846,15 +862,75 @@
       const close = () => { root.innerHTML = ''; };
       document.getElementById('closeModal').onclick = close;
       document.getElementById('modalBg').onclick = (e) => { if (e.target.id === 'modalBg') close(); };
+
+      function syncEntriesFromDOM() {
+        const blocks = root.querySelectorAll('.entry-block');
+        blocks.forEach(block => {
+          const idx = parseInt(block.dataset.idx);
+          if (modalEntries[idx]) {
+            modalEntries[idx].content = block.querySelector('[data-key="content"]').value;
+            modalEntries[idx].startTime = block.querySelector('[data-key="startTime"]').value;
+            modalEntries[idx].endTime = block.querySelector('[data-key="endTime"]').value;
+            modalEntries[idx].instructor = block.querySelector('[data-key="instructor"]').value;
+          }
+        });
+      }
+
+      function renderEntries() {
+        const cont = document.getElementById('entriesContainer');
+        cont.innerHTML = modalEntries.map((entry, idx) => `
+          <div class="entry-block" data-idx="${idx}">
+            <div class="entry-head">
+              <span class="entry-num">รายการที่ ${idx + 1}</span>
+              ${modalEntries.length > 1 ? `<button type="button" class="danger entry-del" data-idx="${idx}" style="padding:4px 12px;font-size:12px;margin:0;">ลบ</button>` : ''}
+            </div>
+            <label>เนื้อหา / หัวข้อ</label>
+            <textarea data-key="content" rows="2" placeholder="เช่น Introduction">${escapeHtml(entry.content || '')}</textarea>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <div>
+                <label>เริ่ม</label>
+                <input type="time" data-key="startTime" value="${escapeHtml(entry.startTime || '')}" />
+              </div>
+              <div>
+                <label>เลิก</label>
+                <input type="time" data-key="endTime" value="${escapeHtml(entry.endTime || '')}" />
+              </div>
+            </div>
+            <label>วิทยากร / ผู้สอน</label>
+            <input type="text" data-key="instructor" placeholder="ชื่อวิทยากร" value="${escapeHtml(entry.instructor || '')}" />
+          </div>
+        `).join('');
+        cont.querySelectorAll('.entry-del').forEach(b => {
+          b.onclick = () => {
+            syncEntriesFromDOM();
+            modalEntries.splice(parseInt(b.dataset.idx), 1);
+            renderEntries();
+          };
+        });
+      }
+
+      renderEntries();
+
+      document.getElementById('addEntryBtn').onclick = () => {
+        syncEntriesFromDOM();
+        modalEntries.push({ content: '', startTime: '', endTime: '', instructor: '' });
+        renderEntries();
+      };
+
       document.getElementById('dateForm').onsubmit = async (e) => {
         e.preventDefault();
+        syncEntriesFromDOM();
+        const cleaned = modalEntries.map(e => ({
+          content: (e.content || '').trim(),
+          startTime: e.startTime || '',
+          endTime: e.endTime || '',
+          instructor: (e.instructor || '').trim()
+        })).filter(e => e.content || e.startTime || e.endTime || e.instructor);
         const newCd = {
           id: dateId,
           label: dateIdToLabel(dateId),
-          content: document.getElementById('dContent').value.trim(),
-          startTime: document.getElementById('dStart').value,
-          endTime: document.getElementById('dEnd').value,
-          instructor: document.getElementById('dInstr').value.trim()
+          entries: cleaned.length ? cleaned : [{ content: '', startTime: '', endTime: '', instructor: '' }],
+          materials: cd.materials || []
         };
         const updated = (schedClassroom.classDates || []).filter(d => d.id !== dateId);
         updated.push(newCd);

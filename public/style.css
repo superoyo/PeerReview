@@ -942,6 +942,60 @@ table tbody tr:hover { background: #f9faff; }
 .dd-row { margin-bottom: 6px; font-size: 14px; color: #444; }
 .dd-row b { color: #222; }
 
+.dd-entry {
+  background: #f5f7fc;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+}
+.dd-entry-num {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4555a6;
+  margin-bottom: 6px;
+}
+
+/* Entry blocks in admin date editor modal */
+.entry-block {
+  background: #f7f8fc;
+  border: 1.5px solid #e6eaf2;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.entry-block:hover { border-color: #c5cdf5; }
+.entry-block label {
+  font-size: 12px;
+  color: #555;
+  margin-top: 8px;
+}
+.entry-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.entry-num {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4555a6;
+}
+.entry-line {
+  border-left: 3px solid #c5cdf5;
+  padding-left: 10px;
+  margin-bottom: 8px;
+}
+.entry-line:last-child { margin-bottom: 0; }
+.entry-num-inline {
+  display: inline-block;
+  background: #4555a6;
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  margin-right: 6px;
+}
+
 /* Profile fields config table */
 .profile-fields-table {
   width: 100%;

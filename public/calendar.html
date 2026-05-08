@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ปฏิทิน</title>
-  <link rel="stylesheet" href="/style.css?v=17" />
+  <link rel="stylesheet" href="/style.css?v=18" />
 </head>
 <body>
   <div class="container wide">
@@ -38,6 +38,18 @@
       }[c]));
     }
     function pad2(n) { return String(n).padStart(2, '0'); }
+    function getEntries(cd) {
+      if (cd && Array.isArray(cd.entries) && cd.entries.length > 0) return cd.entries;
+      if (cd && (cd.content || cd.startTime || cd.endTime || cd.instructor)) {
+        return [{
+          content: cd.content || '',
+          startTime: cd.startTime || '',
+          endTime: cd.endTime || '',
+          instructor: cd.instructor || ''
+        }];
+      }
+      return [];
+    }
     function dateIdToTH(id) {
       try { return new Date(id + 'T00:00:00').toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
       catch (e) { return id; }
@@ -116,17 +128,20 @@
         if (cd) cls.push('class-day');
         if (hasAssignment) cls.push('has-assignment');
         if (id === todayStr) cls.push('today');
-        const preview = cd && cd.content ? `<div class="cal-content">${escapeHtml(cd.content.slice(0, 30))}</div>` : '';
-        const time = cd && (cd.startTime || cd.endTime)
-          ? `<div class="cal-time">⏰ ${escapeHtml(cd.startTime || '')}${cd.endTime ? '-' + escapeHtml(cd.endTime) : ''}</div>`
+        const ents = getEntries(cd);
+        const firstE = ents[0] || null;
+        const preview = firstE && firstE.content ? `<div class="cal-content">${escapeHtml(firstE.content.slice(0, 30))}</div>` : '';
+        const time = firstE && (firstE.startTime || firstE.endTime)
+          ? `<div class="cal-time">⏰ ${escapeHtml(firstE.startTime || '')}${firstE.endTime ? '-' + escapeHtml(firstE.endTime) : ''}</div>`
           : '';
+        const moreBadge = ents.length > 1 ? `<div class="cal-time">+${ents.length - 1} รายการ</div>` : '';
         const matsBadge = cd && cd.materials && cd.materials.length > 0
           ? `<span class="cal-badge">📎 ${cd.materials.length}</span>` : '';
         const assignBadge = hasAssignment
           ? `<span class="cal-badge ${submittedCount === assigns.length ? 'done' : 'pending'}">📝 ${submittedCount}/${assigns.length}</span>` : '';
         html += `<div class="${cls.join(' ')}" data-id="${id}">
           <div class="cal-num">${d}</div>
-          ${preview}${time}
+          ${preview}${time}${moreBadge}
           <div class="cal-badges">${matsBadge}${assignBadge}</div>
         </div>`;
       }
@@ -145,11 +160,19 @@
       });
 
       const root = document.getElementById('modalRoot');
-      const detailHtml = cd ? `
-        ${cd.content ? `<div class="dd-row"><b>เนื้อหา:</b> ${escapeHtml(cd.content)}</div>` : ''}
-        ${(cd.startTime || cd.endTime) ? `<div class="dd-row"><b>เวลา:</b> ${escapeHtml(cd.startTime || '')}${cd.endTime ? ' - ' + escapeHtml(cd.endTime) : ''}</div>` : ''}
-        ${cd.instructor ? `<div class="dd-row"><b>วิทยากร:</b> ${escapeHtml(cd.instructor)}</div>` : ''}
-      ` : '<div class="hint">ไม่ใช่วันเรียน</div>';
+      const ents = getEntries(cd);
+      const detailHtml = cd
+        ? (ents.length === 0
+            ? '<div class="hint">ยังไม่มีรายละเอียด</div>'
+            : ents.map((e, i) => `
+              <div class="dd-entry">
+                ${ents.length > 1 ? `<div class="dd-entry-num">รายการที่ ${i + 1}</div>` : ''}
+                ${e.content ? `<div class="dd-row"><b>เนื้อหา:</b> ${escapeHtml(e.content)}</div>` : ''}
+                ${(e.startTime || e.endTime) ? `<div class="dd-row"><b>เวลา:</b> ${escapeHtml(e.startTime || '')}${e.endTime ? ' - ' + escapeHtml(e.endTime) : ''}</div>` : ''}
+                ${e.instructor ? `<div class="dd-row"><b>วิทยากร:</b> ${escapeHtml(e.instructor)}</div>` : ''}
+              </div>
+            `).join(''))
+        : '<div class="hint">ไม่ใช่วันเรียน</div>';
 
       const matsHtml = (cd && cd.materials && cd.materials.length > 0)
         ? `<h3 style="margin-top: 18px;">📎 เอกสาร</h3>
