@@ -71,6 +71,10 @@ try {
   if (!ccols.includes('profileFields')) {
     db.exec(`ALTER TABLE classrooms ADD COLUMN profileFields TEXT`);
   }
+  if (!ccols.includes('isPublic')) {
+    db.exec(`ALTER TABLE classrooms ADD COLUMN isPublic INTEGER DEFAULT 1`);
+    db.exec(`UPDATE classrooms SET isPublic = 1 WHERE isPublic IS NULL`);
+  }
 } catch (e) { /* ignore */ }
 
 // Migrate users table: add new profile columns
@@ -326,7 +330,8 @@ function rowToClassroom(r) {
     validGroups: r.validGroups ? JSON.parse(r.validGroups) : DEFAULT_GROUPS,
     groupAssignmentMode: r.groupAssignmentMode || 'self',
     enrollCode: r.enrollCode || '',
-    profileFields: mergeProfileFields(pf)
+    profileFields: mergeProfileFields(pf),
+    isPublic: r.isPublic == null ? true : !!r.isPublic
   };
 }
 
@@ -463,7 +468,7 @@ module.exports = {
   updateClassroom(id, fields) {
     const updates = [];
     const values = [];
-    const intFields = ['registrationOpen', 'votingOpen', 'peerReviewEnabled', 'attendancePercent'];
+    const intFields = ['registrationOpen', 'votingOpen', 'peerReviewEnabled', 'attendancePercent', 'isPublic'];
     const strFields = ['code', 'name', 'description', 'university', 'groupAssignmentMode', 'enrollCode'];
     strFields.forEach(k => {
       if (fields[k] !== undefined) { updates.push(`${k} = ?`); values.push(String(fields[k])); }

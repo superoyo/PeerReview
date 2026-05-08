@@ -825,6 +825,14 @@ table tbody tr:hover { background: #f9faff; }
   font-size: 13px;
   color: #6b5400;
 }
+
+.visibility-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
 .locked-info ul { margin: 4px 0; }
 .locked-info b { color: #4a3800; }
 

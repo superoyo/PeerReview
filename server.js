@@ -95,16 +95,18 @@ function fullName(u) {
 // ==================== Public APIs ====================
 
 app.get('/api/classrooms', (req, res) => {
-  const list = db.getClassrooms().map(c => ({
-    id: c.id,
-    code: c.code,
-    name: c.name,
-    description: c.description,
-    university: c.university,
-    registrationOpen: c.registrationOpen,
-    peerReviewEnabled: c.peerReviewEnabled,
-    studentCount: db.getUsers(c.id).length
-  }));
+  const list = db.getClassrooms()
+    .filter(c => c.isPublic)
+    .map(c => ({
+      id: c.id,
+      code: c.code,
+      name: c.name,
+      description: c.description,
+      university: c.university,
+      registrationOpen: c.registrationOpen,
+      peerReviewEnabled: c.peerReviewEnabled,
+      studentCount: db.getUsers(c.id).length
+    }));
   res.json({ classrooms: list });
 });
 

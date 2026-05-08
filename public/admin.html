@@ -260,6 +260,18 @@
               ${c.peerReviewEnabled ? `<span class="tag-pr">Peer Review · ${c.validGroups.length} กลุ่ม · ${modeLabel(c.groupAssignmentMode)}</span>` : ''}
               <span class="enroll-pill" title="รหัส 4 หลัก สำหรับนักศึกษาเข้าคลาส">🔑 รหัสคลาส: <b>${escapeHtml(c.enrollCode || '----')}</b></span>
             </div>
+            <div class="cr-meta" style="margin-top: 6px;">
+              <label class="visibility-toggle">
+                <span style="font-size: 12px; color: #555;">แสดงบนหน้าแรก:</span>
+                <span class="toggle-switch" style="margin-left: 4px;">
+                  <input type="checkbox" data-vis="${escapeHtml(c.id)}" ${c.isPublic ? 'checked' : ''} />
+                  <span class="toggle-slider"></span>
+                </span>
+                <span class="vis-label" style="font-size:12px; color:${c.isPublic ? '#27ae60' : '#888'};">
+                  ${c.isPublic ? 'แสดง' : 'ซ่อน (เข้าได้เฉพาะลิงก์ตรง)'}
+                </span>
+              </label>
+            </div>
           </div>
           <div class="cr-actions">
             <a href="/c/${escapeHtml(c.id)}/admin" class="primary" style="text-decoration:none;display:inline-block;padding:10px 18px;border-radius:8px;background:#667eea;color:#fff;font-size:14px;font-weight:500;">จัดการ</a>
@@ -286,6 +298,26 @@
           const data = await r.json();
           if (r.ok) alert(`รหัสคลาสใหม่: ${data.enrollCode}`);
           await loadClassrooms();
+        };
+      });
+      el.querySelectorAll('input[data-vis]').forEach(input => {
+        input.onchange = async () => {
+          const id = input.dataset.vis;
+          const r = await authFetch(`/api/admin/classrooms/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ isPublic: input.checked })
+          });
+          if (!r.ok) {
+            input.checked = !input.checked;
+            alert('เปลี่ยนสถานะไม่สำเร็จ');
+            return;
+          }
+          // Update label without full reload
+          const label = input.closest('.visibility-toggle').querySelector('.vis-label');
+          if (label) {
+            label.textContent = input.checked ? 'แสดง' : 'ซ่อน (เข้าได้เฉพาะลิงก์ตรง)';
+            label.style.color = input.checked ? '#27ae60' : '#888';
+          }
         };
       });
     }
