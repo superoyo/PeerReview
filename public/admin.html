@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ระบบหลังบ้าน</title>
-  <link rel="stylesheet" href="/style.css?v=8" />
+  <link rel="stylesheet" href="/style.css?v=9" />
 </head>
 <body>
   <div id="loginView" class="container">
@@ -137,10 +137,29 @@
       tbody.innerHTML = fields.map(f => `
         <tr data-key="${f.key}">
           <td>${escapeHtml(f.label)}</td>
-          <td style="text-align:center;"><input type="checkbox" data-role="enabled" ${f.enabled ? 'checked' : ''} /></td>
-          <td style="text-align:center;"><input type="checkbox" data-role="required" ${f.required ? 'checked' : ''} /></td>
+          <td style="text-align:center;">
+            <label class="toggle-switch">
+              <input type="checkbox" data-role="enabled" ${f.enabled ? 'checked' : ''} />
+              <span class="toggle-slider"></span>
+            </label>
+          </td>
+          <td style="text-align:center;">
+            <label class="toggle-switch req">
+              <input type="checkbox" data-role="required" ${f.required ? 'checked' : ''} ${f.enabled ? '' : 'disabled'} />
+              <span class="toggle-slider"></span>
+            </label>
+          </td>
         </tr>
       `).join('');
+      // Disable "required" when "enabled" is off
+      tbody.querySelectorAll('tr[data-key]').forEach(tr => {
+        const en = tr.querySelector('input[data-role="enabled"]');
+        const req = tr.querySelector('input[data-role="required"]');
+        en.onchange = () => {
+          req.disabled = !en.checked;
+          if (!en.checked) req.checked = false;
+        };
+      });
     }
     function collectProfileFields(containerId) {
       const tbody = document.getElementById(containerId);
