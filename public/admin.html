@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ระบบหลังบ้าน</title>
-  <link rel="stylesheet" href="/style.css?v=16" />
+  <link rel="stylesheet" href="/style.css?v=17" />
 </head>
 <body>
   <div id="loginView" class="container">
@@ -72,14 +72,12 @@
         </label>
       </div>
       <div class="actions">
-        <button id="randomizeBtn" class="secondary">สุ่มกลุ่มใหม่ทั้งหมด</button>
         <button id="settingsBtn" class="secondary">⚙ ตั้งค่าวิชา</button>
         <a id="dashLink" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:12px 24px;border-radius:8px;background:#f0f2f8;color:#444;font-size:15px;font-weight:500;">เปิด Dashboard</a>
         <a id="regLink" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:12px 24px;border-radius:8px;background:#f0f2f8;color:#444;font-size:15px;font-weight:500;">หน้าลงทะเบียน</a>
         <button id="exportBtn" class="secondary">Export CSV</button>
         <button id="exportJsonBtn" class="secondary">Export JSON</button>
-        <button id="resetVotesBtn" class="danger">ล้างคะแนนโหวต</button>
-        <button id="resetAllBtn" class="danger">ล้างข้อมูลทั้งหมด</button>
+        <button id="resetBtn" class="danger">🗑 Reset</button>
       </div>
     </div>
 
@@ -565,14 +563,71 @@
       };
     }
 
-    document.getElementById('randomizeBtn').onclick = async () => {
-      if (!confirm('สุ่มกลุ่มใหม่ให้นักศึกษาทุกคน? (กลุ่มเดิมจะถูกเขียนทับ)')) return;
-      const r = await authFetch(`/api/c/${cid}/admin/randomize-groups`, { method: 'POST' });
-      const data = await r.json();
-      if (!r.ok) { alert(data.error || 'error'); return; }
-      alert(`สุ่มกลุ่มให้นักศึกษา ${data.assigned} คนเรียบร้อย`);
-      await initClassView();
-    };
+    document.getElementById('resetBtn').onclick = () => openResetModal();
+
+    function openResetModal() {
+      const root = document.getElementById('modalRoot');
+      root.innerHTML = `
+        <div class="modal-backdrop" id="modalBg">
+          <div class="modal" onclick="event.stopPropagation()">
+            <button class="secondary modal-close" id="closeModal">ปิด</button>
+            <h3>🗑 Reset</h3>
+            <p class="hint">เลือกการกระทำที่ต้องการ</p>
+            <div class="reset-options">
+              <button class="reset-opt" id="optRandomize">
+                <div class="reset-opt-icon">🎲</div>
+                <div>
+                  <div class="reset-opt-title">สุ่มกลุ่มใหม่ทั้งหมด</div>
+                  <div class="reset-opt-desc">กระจายนักศึกษาทุกคนเข้ากลุ่มใหม่ (กลุ่มเดิมเขียนทับ)</div>
+                </div>
+              </button>
+              <button class="reset-opt warn" id="optResetVotes">
+                <div class="reset-opt-icon">🗳️</div>
+                <div>
+                  <div class="reset-opt-title">ล้างคะแนนโหวต</div>
+                  <div class="reset-opt-desc">ลบเฉพาะคะแนนโหวตและ attendance — รายชื่อยังอยู่</div>
+                </div>
+              </button>
+              <button class="reset-opt danger-opt" id="optResetAll">
+                <div class="reset-opt-icon">💥</div>
+                <div>
+                  <div class="reset-opt-title">ล้างข้อมูลทั้งหมด</div>
+                  <div class="reset-opt-desc">ลบรายชื่อ คะแนน รูป selfie ทั้งหมดของห้องนี้ — ย้อนกลับไม่ได้</div>
+                </div>
+              </button>
+            </div>
+            <div id="resetMsg"></div>
+          </div>
+        </div>
+      `;
+      const close = () => { root.innerHTML = ''; };
+      document.getElementById('closeModal').onclick = close;
+      document.getElementById('modalBg').onclick = (e) => { if (e.target.id === 'modalBg') close(); };
+
+      document.getElementById('optRandomize').onclick = async () => {
+        if (!confirm('สุ่มกลุ่มใหม่ให้นักศึกษาทุกคน? (กลุ่มเดิมจะถูกเขียนทับ)')) return;
+        const r = await authFetch(`/api/c/${cid}/admin/randomize-groups`, { method: 'POST' });
+        const data = await r.json();
+        if (!r.ok) { alert(data.error || 'error'); return; }
+        alert(`สุ่มกลุ่มให้นักศึกษา ${data.assigned} คนเรียบร้อย`);
+        close();
+        await initClassView();
+      };
+
+      document.getElementById('optResetVotes').onclick = async () => {
+        if (!confirm('ล้างคะแนนโหวตทั้งหมดในห้องนี้?')) return;
+        await authFetch(`/api/c/${cid}/admin/reset`, { method: 'POST', body: JSON.stringify({ what: 'votes' }) });
+        close();
+        await initClassView();
+      };
+
+      document.getElementById('optResetAll').onclick = async () => {
+        if (!confirm('ล้างข้อมูลทั้งหมดของห้องนี้ รวมถึงรายชื่อ และรูป? การกระทำนี้ย้อนกลับไม่ได้')) return;
+        await authFetch(`/api/c/${cid}/admin/reset`, { method: 'POST', body: JSON.stringify({ what: 'all' }) });
+        close();
+        await initClassView();
+      };
+    }
 
     async function downloadFile(url, defaultName) {
       const res = await authFetch(url);
@@ -591,17 +646,6 @@
       downloadFile(`/api/c/${cid}/admin/export`, `${cid}-scores.csv`);
     document.getElementById('exportJsonBtn').onclick = () =>
       downloadFile(`/api/c/${cid}/admin/export-json`, `${cid}-data.json`);
-
-    document.getElementById('resetVotesBtn').onclick = async () => {
-      if (!confirm('ล้างคะแนนโหวตทั้งหมดในห้องนี้?')) return;
-      await authFetch(`/api/c/${cid}/admin/reset`, { method: 'POST', body: JSON.stringify({ what: 'votes' }) });
-      await initClassView();
-    };
-    document.getElementById('resetAllBtn').onclick = async () => {
-      if (!confirm('ล้างข้อมูลทั้งหมดของห้องนี้ รวมถึงรายชื่อ และรูป? การกระทำนี้ย้อนกลับไม่ได้')) return;
-      await authFetch(`/api/c/${cid}/admin/reset`, { method: 'POST', body: JSON.stringify({ what: 'all' }) });
-      await initClassView();
-    };
 
     document.querySelectorAll('.tab').forEach(t => {
       t.onclick = () => {
