@@ -22,14 +22,14 @@ const DEFAULT_CLASS_DATES = [
 const DEFAULT_GROUPS = ['1', '2', '3', '4'];
 
 const DEFAULT_PROFILE_FIELDS = [
-  { key: 'name',       label: 'ชื่อ - นามสกุล',  enabled: true,  required: false },
-  { key: 'nickname',   label: 'ชื่อเล่น',          enabled: true,  required: false },
-  { key: 'studentId',  label: 'รหัสนักศึกษา',     enabled: true,  required: false },
-  { key: 'faculty',    label: 'คณะ',               enabled: false, required: false },
-  { key: 'department', label: 'สาขา',              enabled: false, required: false },
-  { key: 'university', label: 'มหาวิทยาลัย',      enabled: false, required: false },
-  { key: 'company',    label: 'บริษัท',           enabled: false, required: false },
-  { key: 'position',   label: 'ตำแหน่ง',          enabled: false, required: false },
+  { key: 'name',       label: 'ชื่อ - นามสกุล',  enabled: true,  required: false, showOnDashboard: true  },
+  { key: 'nickname',   label: 'ชื่อเล่น',          enabled: true,  required: false, showOnDashboard: false },
+  { key: 'studentId',  label: 'รหัสนักศึกษา',     enabled: true,  required: false, showOnDashboard: true  },
+  { key: 'faculty',    label: 'คณะ',               enabled: false, required: false, showOnDashboard: false },
+  { key: 'department', label: 'สาขา',              enabled: false, required: false, showOnDashboard: false },
+  { key: 'university', label: 'มหาวิทยาลัย',      enabled: false, required: false, showOnDashboard: false },
+  { key: 'company',    label: 'บริษัท',           enabled: false, required: false, showOnDashboard: false },
+  { key: 'position',   label: 'ตำแหน่ง',          enabled: false, required: false, showOnDashboard: false },
 ];
 
 // ---------- Classrooms table ----------
@@ -305,7 +305,12 @@ function mergeProfileFields(stored) {
   return DEFAULT_PROFILE_FIELDS.map(d => {
     const s = storedMap[d.key];
     if (!s) return { ...d };
-    return { ...d, enabled: !!s.enabled, required: !!s.required };
+    return {
+      ...d,
+      enabled: !!s.enabled,
+      required: !!s.required,
+      showOnDashboard: s.showOnDashboard !== undefined ? !!s.showOnDashboard : d.showOnDashboard
+    };
   });
 }
 

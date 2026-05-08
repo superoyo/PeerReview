@@ -381,6 +381,14 @@ app.get('/api/c/:cid/dashboard', loadClassroom, (req, res) => {
     grouped[u.group].push({
       studentId: u.studentId,
       phone: u.phone,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      nickname: u.nickname,
+      faculty: u.faculty,
+      department: u.department,
+      university: u.university,
+      company: u.company,
+      position: u.position,
       name: displayName(u),
       fullName: fullName(u),
       selfie: u.selfie || null,
@@ -397,7 +405,8 @@ app.get('/api/c/:cid/dashboard', loadClassroom, (req, res) => {
     votedCount,
     groups: c.validGroups,
     votingOpen: c.votingOpen,
-    peerReviewEnabled: c.peerReviewEnabled
+    peerReviewEnabled: c.peerReviewEnabled,
+    profileFields: c.profileFields
   });
 });
 
@@ -439,7 +448,8 @@ app.post('/api/admin/classrooms', requireAdmin, (req, res) => {
     pf = profileFields.map(f => ({
       key: String(f.key || ''),
       enabled: !!f.enabled,
-      required: !!f.required
+      required: !!f.required,
+      showOnDashboard: !!f.showOnDashboard
     })).filter(f => f.key);
   }
   const c = db.createClassroom({
@@ -467,7 +477,8 @@ app.patch('/api/admin/classrooms/:cid/profile-fields', requireAdmin, loadClassro
     fields.profileFields = profileFields.map(f => ({
       key: String(f.key || ''),
       enabled: !!f.enabled,
-      required: !!f.required
+      required: !!f.required,
+      showOnDashboard: !!f.showOnDashboard
     })).filter(f => f.key);
   }
   if (university !== undefined) fields.university = String(university);

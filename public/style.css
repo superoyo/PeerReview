@@ -939,6 +939,11 @@ input.cell-edit.saved {
 .toggle-switch input:disabled + .toggle-slider { opacity: 0.5; cursor: not-allowed; }
 /* Required toggle: orange when active to differentiate */
 .toggle-switch.req input:checked + .toggle-slider { background: #ff8857; }
+/* Dashboard toggle: green */
+.toggle-switch.dash input:checked + .toggle-slider { background: #27ae60; }
+.profile-fields-table th:nth-child(2),
+.profile-fields-table th:nth-child(3),
+.profile-fields-table th:nth-child(4) { text-align: center; width: 80px; }
 .cr-actions {
   display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start;
 }

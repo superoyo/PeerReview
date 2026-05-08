@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard</title>
-  <link rel="stylesheet" href="/style.css?v=10" />
+  <link rel="stylesheet" href="/style.css?v=11" />
 </head>
 <body class="dashboard-body">
   <div class="dashboard-fullscreen">
@@ -46,6 +46,13 @@
       }[c]));
     }
 
+    let dashFields = [];
+
+    function memberValue(m, key) {
+      if (key === 'name') return `${m.firstName || ''} ${m.lastName || ''}`.trim() || m.fullName || '';
+      return m[key] || '';
+    }
+
     async function load() {
       try {
         const res = await fetch(`/api/c/${cid}/dashboard`);
@@ -63,10 +70,23 @@
         voteStateEl.innerHTML = data.votingOpen
           ? '· <span style="color:#27ae60;font-weight:600;">เปิดให้โหวต</span>'
           : '· <span style="color:#888;">ยังไม่เปิดโหวต</span>';
+        // Determine which fields to show under each photo
+        dashFields = (data.profileFields || []).filter(f => f.enabled && f.showOnDashboard);
         renderGroups(data.grouped, data.groups);
       } catch (e) {
         groupsEl.innerHTML = `<div class="message error">โหลดข้อมูลไม่ได้</div>`;
       }
+    }
+
+    function renderMemberInfo(m) {
+      const values = dashFields.map(f => memberValue(m, f.key)).filter(v => v);
+      if (values.length === 0) return '';
+      const primary = values[0];
+      const rest = values.slice(1);
+      return `
+        <div class="member-name">${escapeHtml(primary)}</div>
+        ${rest.map(v => `<div class="member-id">${escapeHtml(v)}</div>`).join('')}
+      `;
     }
 
     function renderGroups(grouped, groups) {
@@ -83,11 +103,11 @@
               const photo = m.selfie
                 ? `<img src="${escapeHtml(m.selfie)}?t=${Date.now()}" alt="" />`
                 : `<div class="no-photo">?</div>`;
+              const tooltip = `${m.studentId || ''} ${m.fullName || m.name}${m.hasVoted ? ' · โหวตแล้ว' : ''}`;
               return `
-                <div class="${cls.join(' ')}" title="${escapeHtml(m.studentId)} ${escapeHtml(m.fullName || m.name)}${m.hasVoted ? ' · โหวตแล้ว' : ''}">
+                <div class="${cls.join(' ')}" title="${escapeHtml(tooltip)}">
                   <div class="member-photo">${photo}${badge}</div>
-                  <div class="member-name">${escapeHtml(m.name)}</div>
-                  <div class="member-id">${escapeHtml(m.studentId)}</div>
+                  ${renderMemberInfo(m)}
                 </div>`;
             }).join('');
         return `

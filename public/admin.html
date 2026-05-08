@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ระบบหลังบ้าน</title>
-  <link rel="stylesheet" href="/style.css?v=10" />
+  <link rel="stylesheet" href="/style.css?v=11" />
 </head>
 <body>
   <div id="loginView" class="container">
@@ -122,14 +122,14 @@
     }
     function defaultProfileFields() {
       return [
-        { key: 'name',       label: 'ชื่อ - นามสกุล', enabled: true,  required: false },
-        { key: 'nickname',   label: 'ชื่อเล่น',         enabled: true,  required: false },
-        { key: 'studentId',  label: 'รหัสนักศึกษา',    enabled: true,  required: false },
-        { key: 'faculty',    label: 'คณะ',              enabled: false, required: false },
-        { key: 'department', label: 'สาขา',             enabled: false, required: false },
-        { key: 'university', label: 'มหาวิทยาลัย',     enabled: false, required: false },
-        { key: 'company',    label: 'บริษัท',           enabled: false, required: false },
-        { key: 'position',   label: 'ตำแหน่ง',          enabled: false, required: false }
+        { key: 'name',       label: 'ชื่อ - นามสกุล', enabled: true,  required: false, showOnDashboard: true  },
+        { key: 'nickname',   label: 'ชื่อเล่น',         enabled: true,  required: false, showOnDashboard: false },
+        { key: 'studentId',  label: 'รหัสนักศึกษา',    enabled: true,  required: false, showOnDashboard: true  },
+        { key: 'faculty',    label: 'คณะ',              enabled: false, required: false, showOnDashboard: false },
+        { key: 'department', label: 'สาขา',             enabled: false, required: false, showOnDashboard: false },
+        { key: 'university', label: 'มหาวิทยาลัย',     enabled: false, required: false, showOnDashboard: false },
+        { key: 'company',    label: 'บริษัท',           enabled: false, required: false, showOnDashboard: false },
+        { key: 'position',   label: 'ตำแหน่ง',          enabled: false, required: false, showOnDashboard: false }
       ];
     }
     function renderProfileFieldsRows(containerId, fields) {
@@ -149,15 +149,23 @@
               <span class="toggle-slider"></span>
             </label>
           </td>
+          <td style="text-align:center;">
+            <label class="toggle-switch dash">
+              <input type="checkbox" data-role="showOnDashboard" ${f.showOnDashboard ? 'checked' : ''} ${f.enabled ? '' : 'disabled'} />
+              <span class="toggle-slider"></span>
+            </label>
+          </td>
         </tr>
       `).join('');
-      // Disable "required" when "enabled" is off
+      // Disable "required" + "showOnDashboard" when "enabled" is off
       tbody.querySelectorAll('tr[data-key]').forEach(tr => {
         const en = tr.querySelector('input[data-role="enabled"]');
         const req = tr.querySelector('input[data-role="required"]');
+        const dash = tr.querySelector('input[data-role="showOnDashboard"]');
         en.onchange = () => {
           req.disabled = !en.checked;
-          if (!en.checked) req.checked = false;
+          dash.disabled = !en.checked;
+          if (!en.checked) { req.checked = false; dash.checked = false; }
         };
       });
     }
@@ -166,7 +174,8 @@
       return Array.from(tbody.querySelectorAll('tr[data-key]')).map(tr => ({
         key: tr.dataset.key,
         enabled: tr.querySelector('input[data-role="enabled"]').checked,
-        required: tr.querySelector('input[data-role="required"]').checked
+        required: tr.querySelector('input[data-role="required"]').checked,
+        showOnDashboard: tr.querySelector('input[data-role="showOnDashboard"]').checked
       }));
     }
     function formatDate(iso) {
@@ -346,7 +355,7 @@
               <h3 style="margin-top: 18px;">ข้อมูลที่ขอจากผู้ลงทะเบียน</h3>
               <p class="hint" style="margin: 0 0 8px;">เลือกฟิลด์ที่ต้องการเก็บ และระบุว่าบังคับหรือไม่</p>
               <table class="profile-fields-table">
-                <thead><tr><th>ฟิลด์</th><th>เก็บ</th><th>บังคับ</th></tr></thead>
+                <thead><tr><th>ฟิลด์</th><th>เก็บ</th><th>บังคับ</th><th>Dashboard</th></tr></thead>
                 <tbody id="nfProfileFields"></tbody>
               </table>
 
@@ -503,7 +512,7 @@
               <h3 style="margin-top: 18px;">ข้อมูลที่ขอจากผู้ลงทะเบียน</h3>
               <p class="hint" style="margin-bottom: 8px;">เปิดเก็บฟิลด์ + ตั้งบังคับ/ไม่บังคับ</p>
               <table class="profile-fields-table">
-                <thead><tr><th>ฟิลด์</th><th>เก็บ</th><th>บังคับ</th></tr></thead>
+                <thead><tr><th>ฟิลด์</th><th>เก็บ</th><th>บังคับ</th><th>Dashboard</th></tr></thead>
                 <tbody id="sProfileRows"></tbody>
               </table>
 
