@@ -1011,6 +1011,18 @@ input.cell-edit.saved {
 .locked-info ul { margin: 4px 0; }
 .locked-info b { color: #4a3800; }
 
+/* Toggle row helper (label + toggle + text) */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 14px;
+  color: #333;
+  font-weight: normal;
+}
+
 /* Toggle switch */
 .toggle-switch {
   position: relative;

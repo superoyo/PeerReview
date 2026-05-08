@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ระบบหลังบ้าน</title>
-  <link rel="stylesheet" href="/style.css?v=14" />
+  <link rel="stylesheet" href="/style.css?v=15" />
 </head>
 <body>
   <div id="loginView" class="container">
@@ -347,8 +347,11 @@
               <input type="text" id="nfDesc" placeholder="ไม่บังคับ" />
               <label>มหาวิทยาลัย</label>
               <input type="text" id="nfUni" value="มหาวิทยาลัยกรุงเทพ" />
-              <label style="display:flex; align-items:center; gap:8px; margin-top:14px;">
-                <input type="checkbox" id="nfPR" checked />
+              <label class="toggle-row" style="margin-top: 14px;">
+                <span class="toggle-switch">
+                  <input type="checkbox" id="nfPR" checked />
+                  <span class="toggle-slider"></span>
+                </span>
                 <span>เปิดใช้ Peer Review (มีกลุ่ม โหวตคะแนน เช็คชื่อ)</span>
               </label>
 
@@ -496,8 +499,11 @@
               <label>มหาวิทยาลัย (ใช้เป็น Default ของฟิลด์ "มหาวิทยาลัย")</label>
               <input type="text" id="sUni" value="${escapeHtml(c.university || '')}" />
 
-              <label style="display:flex; align-items:center; gap:8px; margin-top:14px;">
-                <input type="checkbox" id="sPR" ${c.peerReviewEnabled ? 'checked' : ''} />
+              <label class="toggle-row" style="margin-top: 14px;">
+                <span class="toggle-switch">
+                  <input type="checkbox" id="sPR" ${c.peerReviewEnabled ? 'checked' : ''} />
+                  <span class="toggle-slider"></span>
+                </span>
                 <span>เปิดใช้ Peer Review (มีกลุ่ม โหวตคะแนน เช็คชื่อ)</span>
               </label>
 
