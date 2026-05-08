@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ห้องเรียนทั้งหมด</title>
-  <link rel="stylesheet" href="/style.css?v=9" />
+  <link rel="stylesheet" href="/style.css?v=10" />
 </head>
 <body class="home-body">
   <div class="top-nav">
@@ -62,7 +62,7 @@
           return;
         }
         el.innerHTML = data.classrooms.map(c => `
-          <a class="classroom-card" href="/c/${escapeHtml(c.id)}">
+          <div class="classroom-card">
             <div class="cc-code">${escapeHtml(c.code)}</div>
             <div class="cc-name">${escapeHtml(c.name)}</div>
             <div class="cc-uni">${escapeHtml(c.university || '')}</div>
@@ -73,7 +73,11 @@
                 ${c.registrationOpen ? '● เปิดลงทะเบียน' : '○ ปิดลงทะเบียน'}
               </span>
             </div>
-          </a>
+            <div class="cc-actions">
+              <a href="/c/${escapeHtml(c.id)}" class="cc-btn cc-btn-primary">📝 ลงทะเบียน</a>
+              <a href="/c/${escapeHtml(c.id)}/dashboard" class="cc-btn cc-btn-secondary">📊 Dashboard</a>
+            </div>
+          </div>
         `).join('');
       } catch (e) {
         document.getElementById('list').innerHTML = `<div class="message error">โหลดข้อมูลไม่ได้</div>`;

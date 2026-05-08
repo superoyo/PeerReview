@@ -585,6 +585,44 @@ table tbody tr:hover { background: #f9faff; }
 .cc-meta .open { color: #27ae60; font-weight: 600; }
 .cc-meta .closed { color: #aaa; }
 
+/* Classroom card action buttons */
+.cc-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.cc-btn {
+  flex: 1;
+  min-width: 110px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  text-align: center;
+  transition: all 0.15s;
+  display: inline-block;
+  border: 1.5px solid transparent;
+}
+.cc-btn-primary { background: #667eea; color: #fff; }
+.cc-btn-primary:hover { background: #5568d3; transform: translateY(-1px); }
+.cc-btn-secondary { background: #f0f2f8; color: #444; border-color: #d8dde6; }
+.cc-btn-secondary:hover { background: #e2e6f0; transform: translateY(-1px); }
+
+/* Yellow theme buttons override */
+.home-body .cc-btn-primary { background: var(--th-code); color: #fff; }
+.home-body .cc-btn-primary:hover { background: var(--th-heading); }
+.home-body .cc-btn-secondary {
+  background: var(--th-login-bg);
+  color: var(--th-login-text);
+  border-color: var(--th-login-border);
+}
+.home-body .cc-btn-secondary:hover {
+  background: var(--th-border);
+  color: var(--th-heading);
+}
+
 /* Classroom row in admin list */
 .classroom-row {
   display: flex;
