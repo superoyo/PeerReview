@@ -871,6 +871,31 @@ table tbody tr:hover { background: #f9faff; }
   cursor: pointer;
   user-select: none;
 }
+
+/* Inline editable cells in admin user table */
+input.cell-edit {
+  width: 100%;
+  min-width: 90px;
+  border: 1.5px solid transparent;
+  background: transparent;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  border-radius: 4px;
+  color: #222;
+}
+input.cell-edit:hover { background: #f5f7fc; border-color: #e6eaf2; }
+input.cell-edit:focus {
+  outline: none;
+  background: #fff;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102,126,234,0.18);
+}
+input.cell-edit.saving { opacity: 0.6; }
+input.cell-edit.saved {
+  border-color: #27ae60;
+  background: #efffef;
+}
 .locked-info ul { margin: 4px 0; }
 .locked-info b { color: #4a3800; }
 

@@ -631,6 +631,28 @@ app.post('/api/c/:cid/admin/toggle-registration', requireAdmin, loadClassroom, (
   res.json({ ok: true, registrationOpen: next });
 });
 
+// Admin: update any user's fields (inline edit from users table)
+app.patch('/api/c/:cid/admin/users/:userKey', requireAdmin, loadClassroom, (req, res) => {
+  const u = db.getUser(req.classroom.id, req.params.userKey);
+  if (!u) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+  const fields = req.body || {};
+  const allowed = {};
+  ['firstName', 'lastName', 'nickname', 'studentId',
+   'faculty', 'department', 'university', 'company', 'position'].forEach(k => {
+    if (fields[k] !== undefined) allowed[k] = String(fields[k]).trim();
+  });
+  if (fields.group !== undefined) {
+    const c = req.classroom;
+    const g = String(fields.group || '').trim();
+    if (g && c.peerReviewEnabled && !c.validGroups.includes(g)) {
+      return res.status(400).json({ error: `กลุ่มต้องเป็น ${c.validGroups.join(', ')}` });
+    }
+    allowed.group = g;
+  }
+  const updated = db.updateUser(req.classroom.id, req.params.userKey, allowed);
+  res.json({ ok: true, user: updated });
+});
+
 app.post('/api/c/:cid/admin/set-group', requireAdmin, loadClassroom, (req, res) => {
   const { studentId, group } = req.body || {};
   if (!studentId) return res.status(400).json({ error: 'studentId required' });

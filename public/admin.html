@@ -1105,23 +1105,26 @@
       }
       const dates = classDates || [];
       const validGroups = (classroom && classroom.validGroups) || [];
+      const enabledFields = ((classroom && classroom.profileFields) || defaultProfileFields()).filter(f => f.enabled);
       const groupNames = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
-      let html = `<p class="hint">รวม ${users.length} คน · ${groupNames.length} กลุ่ม · จัดกลุ่มแบบ <b>${escapeHtml(modeLabel(classroom && classroom.groupAssignmentMode))}</b> · คลิก dropdown ในคอลัมน์กลุ่มเพื่อย้ายคน</p>`;
+      let html = `<p class="hint">รวม ${users.length} คน · ${groupNames.length} กลุ่ม · ${classroom && classroom.peerReviewEnabled ? 'จัดกลุ่มแบบ <b>' + escapeHtml(modeLabel(classroom.groupAssignmentMode)) + '</b> · ' : ''}คลิกที่ช่องเพื่อแก้ไข</p>`;
       groupNames.forEach(g => {
         html += `
           <div class="group-section">
             <div class="group-title">กลุ่ม ${escapeHtml(g)} (${grouped[g].length} คน)</div>
+            <div style="overflow-x: auto;">
             <table>
               <thead>
                 <tr>
                   <th>รูป</th>
-                  <th>รหัส</th>
-                  <th>ชื่อ-นามสกุล</th>
-                  <th>ชื่อเล่น</th>
-                  <th>กลุ่ม</th>
-                  <th>เวลาลงทะเบียน</th>
-                  <th>วันที่มาเรียน</th>
-                  <th>คะแนนที่ได้รับ</th>
+                  <th>เบอร์</th>
+                  ${enabledFields.map(f => f.key === 'name'
+                    ? '<th>ชื่อ</th><th>นามสกุล</th>'
+                    : `<th>${escapeHtml(f.label)}</th>`).join('')}
+                  ${classroom && classroom.peerReviewEnabled ? '<th>กลุ่ม</th>' : ''}
+                  <th>เวลา</th>
+                  <th>วันที่มา</th>
+                  <th>คะแนน</th>
                 </tr>
               </thead>
               <tbody>
@@ -1130,34 +1133,44 @@
                   const tags = dates.length === 0
                     ? '-'
                     : (u.attendance === undefined
-                        ? '<span style="color:#aaa;font-size:13px;">ยังไม่ได้ส่ง</span>'
+                        ? '<span style="color:#aaa;font-size:12px;">ยังไม่ส่ง</span>'
                         : dates.map(d => att.includes(d.id)
                             ? `<span class="attend-tag">${escapeHtml(d.label)}</span>`
                             : `<span class="attend-tag absent">${escapeHtml(d.label)}</span>`).join(' '));
                   const photo = u.selfie
                     ? `<img class="thumb" src="${escapeHtml(u.selfie)}" alt="" />`
                     : `<div class="thumb no-photo">?</div>`;
+                  const userKey = u.phone || u.studentId;
                   const groupSelect = `
-                    <select class="group-select" data-id="${escapeHtml(u.studentId)}">
+                    <select class="group-select" data-id="${escapeHtml(userKey)}">
                       <option value="" ${!u.group ? 'selected' : ''}>—</option>
                       ${validGroups.map(g2 => `<option value="${escapeHtml(g2)}" ${u.group === g2 ? 'selected' : ''}>${escapeHtml(g2)}</option>`).join('')}
                     </select>
                   `;
+                  const profileCells = enabledFields.map(f => {
+                    if (f.key === 'name') {
+                      return `
+                        <td><input class="cell-edit" data-key="firstName" data-user="${escapeHtml(userKey)}" value="${escapeHtml(u.firstName || '')}" /></td>
+                        <td><input class="cell-edit" data-key="lastName" data-user="${escapeHtml(userKey)}" value="${escapeHtml(u.lastName || '')}" /></td>
+                      `;
+                    }
+                    return `<td><input class="cell-edit" data-key="${escapeHtml(f.key)}" data-user="${escapeHtml(userKey)}" value="${escapeHtml(u[f.key] || '')}" /></td>`;
+                  }).join('');
                   return `
                     <tr>
                       <td>${photo}</td>
-                      <td>${escapeHtml(u.studentId)}</td>
-                      <td>${escapeHtml((u.firstName || '') + ' ' + (u.lastName || ''))}</td>
-                      <td>${escapeHtml(u.nickname || '-')}</td>
-                      <td>${groupSelect}</td>
-                      <td>${formatDate(u.registeredAt)}</td>
+                      <td style="font-size:13px;">${escapeHtml(u.phone || '-')}</td>
+                      ${profileCells}
+                      ${classroom && classroom.peerReviewEnabled ? `<td>${groupSelect}</td>` : ''}
+                      <td style="font-size:11px; color:#888;">${formatDate(u.registeredAt)}</td>
                       <td>${tags}</td>
-                      <td><button class="secondary view-votes-btn" data-id="${escapeHtml(u.studentId)}">ดูคะแนน</button></td>
+                      <td><button class="secondary view-votes-btn" data-id="${escapeHtml(userKey)}">ดูคะแนน</button></td>
                     </tr>
                   `;
                 }).join('')}
               </tbody>
             </table>
+            </div>
           </div>
         `;
       });
@@ -1178,6 +1191,34 @@
             alert(data.error || 'เปลี่ยนกลุ่มไม่สำเร็จ');
           }
           await loadUsers();
+        };
+      });
+      // Inline edit on profile cells
+      el.querySelectorAll('input.cell-edit').forEach(input => {
+        input.dataset.original = input.value;
+        input.onfocus = () => { input.dataset.original = input.value; };
+        input.onkeydown = (e) => { if (e.key === 'Enter') input.blur(); };
+        input.onblur = async () => {
+          const orig = input.dataset.original;
+          const val = input.value.trim();
+          if (val === orig) return;
+          const userKey = input.dataset.user;
+          const fieldKey = input.dataset.key;
+          input.classList.add('saving');
+          const r = await authFetch(`/api/c/${cid}/admin/users/${encodeURIComponent(userKey)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ [fieldKey]: val })
+          });
+          input.classList.remove('saving');
+          if (!r.ok) {
+            const data = await r.json().catch(() => ({}));
+            alert(data.error || 'บันทึกไม่สำเร็จ');
+            input.value = orig;
+            return;
+          }
+          input.dataset.original = val;
+          input.classList.add('saved');
+          setTimeout(() => input.classList.remove('saved'), 800);
         };
       });
     }
