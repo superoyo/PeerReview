@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ห้องเรียนทั้งหมด</title>
-  <link rel="stylesheet" href="/style.css?v=6" />
+  <link rel="stylesheet" href="/style.css?v=7" />
 </head>
 <body class="home-body">
   <div class="top-nav">
@@ -17,6 +17,7 @@
 
     <div class="theme-picker">
       <span class="theme-picker-label">🎨 ธีมสี:</span>
+      <button class="theme-dot theme-warm" data-theme="warm" data-emoji="☕" title="อบอุ่น (Warm)"></button>
       <button class="theme-dot theme-sunny" data-theme="sunny" data-emoji="☀️" title="สดใส (Sunny)"></button>
       <button class="theme-dot theme-calm" data-theme="calm" data-emoji="🌊" title="สบาย (Calm)"></button>
       <button class="theme-dot theme-fresh" data-theme="fresh" data-emoji="🌿" title="สดชื่น (Fresh)"></button>
@@ -38,15 +39,15 @@
     }
 
     // Theme picker
-    const VALID_THEMES = ['sunny', 'calm', 'fresh', 'cute', 'creative', 'minimal'];
+    const VALID_THEMES = ['warm', 'sunny', 'calm', 'fresh', 'cute', 'creative', 'minimal'];
     function applyTheme(name) {
-      if (!VALID_THEMES.includes(name)) name = 'sunny';
+      if (!VALID_THEMES.includes(name)) name = 'warm';
       document.body.className = 'home-body theme-' + name;
       localStorage.setItem('pr_theme', name);
       document.querySelectorAll('.theme-dot').forEach(d =>
         d.classList.toggle('active', d.dataset.theme === name));
     }
-    applyTheme(localStorage.getItem('pr_theme') || 'sunny');
+    applyTheme(localStorage.getItem('pr_theme') || 'warm');
     document.querySelectorAll('.theme-dot').forEach(d => {
       d.onclick = () => applyTheme(d.dataset.theme);
     });

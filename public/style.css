@@ -395,6 +395,24 @@ table tbody tr:hover { background: #f9faff; }
   min-height: 100vh;
 }
 .home-body.theme-sunny { /* uses defaults above */ }
+.home-body.theme-warm {
+  --th-from: #fff8ec;
+  --th-mid: #fce4c1;
+  --th-to: #f0a575;
+  --th-container: #fffdf7;
+  --th-border: #f5d8b1;
+  --th-heading: #4a2418;
+  --th-subtitle: #8b3a1c;
+  --th-code: #cc6644;
+  --th-card: #fffbf3;
+  --th-name: #2a1408;
+  --th-uni: #8b4a2e;
+  --th-desc: #5a2e1a;
+  --th-open: #c95a32;
+  --th-login-bg: #fff0d9;
+  --th-login-text: #6b2e16;
+  --th-login-border: #f0a575;
+}
 .home-body.theme-calm {
   --th-from: #81d4fa; --th-mid: #4fc3f7; --th-to: #0288d1;
   --th-container: #f5fbff; --th-border: #b3e5fc;
@@ -504,6 +522,7 @@ table tbody tr:hover { background: #f9faff; }
   box-shadow: 0 0 0 3px var(--th-heading), 0 4px 12px rgba(0,0,0,0.3);
   transform: scale(1.1);
 }
+.theme-dot.theme-warm { background: linear-gradient(135deg, #fce4c1, #cc6644); }
 .theme-dot.theme-sunny { background: linear-gradient(135deg, #ffd54f, #ff9800); }
 .theme-dot.theme-calm { background: linear-gradient(135deg, #81d4fa, #0288d1); }
 .theme-dot.theme-fresh { background: linear-gradient(135deg, #a5d6a7, #43a047); }
