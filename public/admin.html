@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ระบบหลังบ้าน</title>
-  <link rel="stylesheet" href="/style.css?v=15" />
+  <link rel="stylesheet" href="/style.css?v=16" />
 </head>
 <body>
   <div id="loginView" class="container">
@@ -54,16 +54,24 @@
 
     <div class="status-bar">
       <div class="status-grp">
-        <span>การลงทะเบียน:
+        <label class="toggle-row">
+          <span>การลงทะเบียน</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="toggleReg" />
+            <span class="toggle-slider"></span>
+          </span>
           <span id="regState" class="vote-state closed">-</span>
-        </span>
-        <span>การโหวต:
+        </label>
+        <label class="toggle-row">
+          <span>การโหวต</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="toggleVote" />
+            <span class="toggle-slider"></span>
+          </span>
           <span id="voteState" class="vote-state closed">-</span>
-        </span>
+        </label>
       </div>
       <div class="actions">
-        <button id="toggleReg" class="secondary">เปิด/ปิด ลงทะเบียน</button>
-        <button id="toggleVote" class="success">เปิดให้โหวต</button>
         <button id="randomizeBtn" class="secondary">สุ่มกลุ่มใหม่ทั้งหมด</button>
         <button id="settingsBtn" class="secondary">⚙ ตั้งค่าวิชา</button>
         <a id="dashLink" target="_blank" class="secondary" style="text-decoration:none;display:inline-block;padding:12px 24px;border-radius:8px;background:#f0f2f8;color:#444;font-size:15px;font-weight:500;">เปิด Dashboard</a>
@@ -460,19 +468,18 @@
       regEl.className = 'vote-state ' + (c.registrationOpen ? 'open' : 'closed');
       voteEl.textContent = c.votingOpen ? 'เปิด' : 'ปิด';
       voteEl.className = 'vote-state ' + (c.votingOpen ? 'open' : 'closed');
-      const tv = document.getElementById('toggleVote');
-      tv.textContent = c.votingOpen ? 'ปิดการโหวต' : 'เปิดให้โหวต';
-      tv.className = c.votingOpen ? 'danger' : 'success';
+      document.getElementById('toggleReg').checked = !!c.registrationOpen;
+      document.getElementById('toggleVote').checked = !!c.votingOpen;
     }
 
-    document.getElementById('toggleVote').onclick = async () => {
+    document.getElementById('toggleVote').onchange = async (e) => {
       const r = await authFetch(`/api/c/${cid}/admin/toggle-voting`, { method: 'POST' });
-      if (!r.ok) { alert('error'); return; }
+      if (!r.ok) { alert('error'); e.target.checked = !e.target.checked; return; }
       await loadClassMeta();
     };
-    document.getElementById('toggleReg').onclick = async () => {
+    document.getElementById('toggleReg').onchange = async (e) => {
       const r = await authFetch(`/api/c/${cid}/admin/toggle-registration`, { method: 'POST' });
-      if (!r.ok) { alert('error'); return; }
+      if (!r.ok) { alert('error'); e.target.checked = !e.target.checked; return; }
       await loadClassMeta();
     };
     document.getElementById('settingsBtn').onclick = () => openSettingsModal();
