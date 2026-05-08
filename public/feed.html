@@ -108,6 +108,10 @@
         const c = data.classroom;
         document.getElementById('cTitle').textContent = `${c.code} — ${c.name}`;
         document.getElementById('cSub').textContent = c.university || '';
+        // Hide Peer Review activity + group sections if classroom has peer review off
+        document.getElementById('actPeer').style.display = c.peerReviewEnabled ? '' : 'none';
+        document.getElementById('myGroupSection').style.display = c.peerReviewEnabled ? '' : 'none';
+        document.getElementById('otherGroupsSection').style.display = c.peerReviewEnabled ? '' : 'none';
 
         const me = data.me;
         const fullName = `${me.firstName || ''} ${me.lastName || ''}`.trim() || me.name || me.studentId;
