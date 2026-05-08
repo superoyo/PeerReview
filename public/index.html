@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ห้องเรียนทั้งหมด</title>
-  <link rel="stylesheet" href="/style.css?v=17" />
+  <link rel="stylesheet" href="/style.css?v=18" />
 </head>
 <body class="home-body">
   <div class="top-nav">
@@ -52,6 +52,37 @@
       d.onclick = () => applyTheme(d.dataset.theme);
     });
 
+    async function openDashboard(cid) {
+      // If has registered session for this classroom OR already unlocked dashboard this session, skip
+      const sessKey = `pr_dash_unlock_${cid}`;
+      if (localStorage.getItem(`pr_user_${cid}`) || sessionStorage.getItem(sessKey)) {
+        window.location.href = `/c/${cid}/dashboard`;
+        return;
+      }
+      const code = prompt('กรุณากรอกรหัสคลาส 4 หลัก เพื่อเข้า Dashboard');
+      if (code === null) return;
+      const trimmed = String(code).trim();
+      if (!/^\d{4}$/.test(trimmed)) {
+        alert('รหัสต้องเป็นตัวเลข 4 หลัก');
+        return;
+      }
+      try {
+        const r = await fetch(`/api/c/${cid}/validate-enroll-code`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enrollCode: trimmed })
+        });
+        if (!r.ok) {
+          alert('รหัสคลาสไม่ถูกต้อง');
+          return;
+        }
+        sessionStorage.setItem(sessKey, '1');
+        window.location.href = `/c/${cid}/dashboard`;
+      } catch (e) {
+        alert('เกิดข้อผิดพลาด: ' + e.message);
+      }
+    }
+
     async function load() {
       try {
         const res = await fetch('/api/classrooms');
@@ -79,11 +110,14 @@
             </div>
             <div class="cc-actions">
               <a href="${enterUrl}" class="cc-btn cc-btn-primary">${enterLabel}</a>
-              <a href="/c/${escapeHtml(c.id)}/dashboard" class="cc-btn cc-btn-secondary">📊 Dashboard</a>
+              <a href="#" class="cc-btn cc-btn-secondary" data-dash="${escapeHtml(c.id)}">📊 Dashboard</a>
             </div>
           </div>
         `;
         }).join('');
+        el.querySelectorAll('a[data-dash]').forEach(a => {
+          a.onclick = (e) => { e.preventDefault(); openDashboard(a.dataset.dash); };
+        });
       } catch (e) {
         document.getElementById('list').innerHTML = `<div class="message error">โหลดข้อมูลไม่ได้</div>`;
       }
