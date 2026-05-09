@@ -233,9 +233,6 @@ app.post('/api/c/:cid/register', loadClassroom, (req, res) => {
     }
     res.json({ ok: true, user, message });
   } catch (e) {
-    if (String(e.message).includes('UNIQUE') || String(e.message).includes('unique')) {
-      return res.status(409).json({ error: 'เบอร์มือถือนี้ลงทะเบียนแล้วในคลาสนี้' });
-    }
     res.status(500).json({ error: e.message });
   }
 });

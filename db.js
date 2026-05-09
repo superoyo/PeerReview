@@ -174,9 +174,52 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_votes_voter ON votes(voterId);
   CREATE INDEX IF NOT EXISTS idx_votes_target ON votes(targetId);
 `);
-// Drop legacy unique-phone constraint if exists, replace with non-unique index
+// Drop legacy unique-phone index if exists, replace with non-unique index
 try { db.exec(`DROP INDEX IF EXISTS idx_users_classroom_phone`); } catch (e) {}
 try { db.exec(`CREATE INDEX IF NOT EXISTS idx_users_classroom_phone ON users(classroomId, phone)`); } catch (e) {}
+
+// Detect legacy table-level UNIQUE constraints (from older schemas) and rebuild
+// the users table without them. Allows duplicate phone / studentId.
+try {
+  const indexes = db.prepare("PRAGMA index_list(users)").all();
+  const hasLegacyUnique = indexes.some(i => i.unique && String(i.name || '').startsWith('sqlite_autoindex'));
+  if (hasLegacyUnique) {
+    console.log('Removing legacy UNIQUE constraint on users table...');
+    const cols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+    db.exec(`
+      CREATE TABLE users_clean (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        classroomId TEXT NOT NULL,
+        phone TEXT,
+        studentId TEXT,
+        firstName TEXT,
+        lastName TEXT,
+        nickname TEXT,
+        name TEXT,
+        groupNum TEXT,
+        registeredAt TEXT NOT NULL,
+        selfie TEXT,
+        selfieAt TEXT,
+        attendance TEXT,
+        attendanceUpdatedAt TEXT,
+        attendanceSubmittedAt TEXT,
+        faculty TEXT,
+        department TEXT,
+        university TEXT,
+        company TEXT,
+        position TEXT
+      );
+    `);
+    const wantCols = ['id','classroomId','phone','studentId','firstName','lastName','nickname','name','groupNum','registeredAt','selfie','selfieAt','attendance','attendanceUpdatedAt','attendanceSubmittedAt','faculty','department','university','company','position'];
+    const validCols = wantCols.filter(c => cols.includes(c));
+    db.exec(`INSERT INTO users_clean (${validCols.join(',')}) SELECT ${validCols.join(',')} FROM users;`);
+    db.exec(`DROP TABLE users;`);
+    db.exec(`ALTER TABLE users_clean RENAME TO users;`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_users_classroom ON users(classroomId);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_users_classroom_phone ON users(classroomId, phone);`);
+    console.log('users table rebuilt without UNIQUE');
+  }
+} catch (e) { console.error('Legacy UNIQUE cleanup failed:', e.message); }
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS assignments (
