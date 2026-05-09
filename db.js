@@ -528,7 +528,7 @@ module.exports = {
     return rowToUser(db.prepare('SELECT * FROM users WHERE classroomId = ? AND phone = ?').get(classroomId, phone));
   },
   addUser(classroomId, u) {
-    db.prepare(`INSERT INTO users (classroomId, phone, studentId, firstName, lastName, nickname, name, groupNum, registeredAt, faculty, department, university, company, position)
+    const r = db.prepare(`INSERT INTO users (classroomId, phone, studentId, firstName, lastName, nickname, name, groupNum, registeredAt, faculty, department, university, company, position)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       classroomId, u.phone || '', u.studentId || '',
       u.firstName || '', u.lastName || '', u.nickname || '',
@@ -537,7 +537,8 @@ module.exports = {
       u.faculty || '', u.department || '', u.university || '',
       u.company || '', u.position || ''
     );
-    return this.getUser(classroomId, u.phone || u.studentId);
+    // Return the just-inserted row (since same phone may exist multiple times)
+    return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid));
   },
   updateUser(classroomId, key, fields) {
     const sets = [], vals = [];
