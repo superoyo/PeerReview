@@ -62,7 +62,6 @@
     const groupButtons = document.getElementById('groupButtons');
     const groupInput = document.getElementById('group');
     let classroom = null;
-    let isReturning = false;
 
     function escapeHtml(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
@@ -71,37 +70,10 @@
     }
 
     const userKey = `pr_user_${cid}`;
-    const saved = localStorage.getItem(userKey);
-    // Show banner if there's an existing session, but don't auto-redirect.
-    // This lets a different person register on a shared device, while
-    // returning users can quickly resume by clicking "เข้าด้วย session นี้".
-    if (saved) {
-      try {
-        const u = JSON.parse(saved);
-        const name = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.nickname || u.studentId || u.phone || '-';
-        const banner = document.createElement('div');
-        banner.className = 'message info';
-        banner.style.marginBottom = '14px';
-        banner.innerHTML = `
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap: wrap;">
-            <div>📱 มีผู้ใช้ "<b>${escapeHtml(name)}</b>" อยู่ในเครื่องนี้</div>
-            <div style="display:flex; gap:6px;">
-              <button type="button" class="primary" id="continueAsBtn" style="padding:6px 14px; font-size:13px; margin:0;">เข้าด้วย session นี้</button>
-              <button type="button" class="secondary" id="newPersonBtn" style="padding:6px 14px; font-size:13px; margin:0;">ลงทะเบียนคนใหม่</button>
-            </div>
-          </div>
-        `;
-        cInfo.parentNode.insertBefore(banner, cInfo.nextSibling);
-        document.getElementById('continueAsBtn').onclick = () => {
-          window.location.href = u.selfie ? `/c/${cid}/feed` : `/c/${cid}/selfie`;
-        };
-        document.getElementById('newPersonBtn').onclick = () => {
-          localStorage.removeItem(userKey);
-          banner.remove();
-          document.getElementById('phone').focus();
-        };
-      } catch (e) { localStorage.removeItem(userKey); }
-    }
+    // Always clear any existing session when arriving at the register page —
+    // this ensures fresh registration with no duplicate-phone check or session
+    // hijacking from a shared device.
+    localStorage.removeItem(userKey);
 
     async function loadClassroom() {
       try {
@@ -196,7 +168,6 @@
         msg.innerHTML = `<div class="message error">กรุณากรอกเบอร์มือถือ</div>`;
         return;
       }
-      isReturning = false;
       phoneForm.style.display = 'none';
       codeForm.style.display = '';
       stepLabel.textContent = 'ขั้นที่ 2: กรอกรหัสคลาส 4 หลัก';
