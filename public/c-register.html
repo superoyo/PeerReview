@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ลงทะเบียนเข้าห้องเรียน</title>
-  <link rel="stylesheet" href="/style.css?v=17" />
+  <link rel="stylesheet" href="/style.css?v=18" />
 </head>
 <body>
   <div class="container">
@@ -72,9 +72,35 @@
 
     const userKey = `pr_user_${cid}`;
     const saved = localStorage.getItem(userKey);
+    // Show banner if there's an existing session, but don't auto-redirect.
+    // This lets a different person register on a shared device, while
+    // returning users can quickly resume by clicking "เข้าด้วย session นี้".
     if (saved) {
-      const u = JSON.parse(saved);
-      window.location.href = u.selfie ? `/c/${cid}/feed` : `/c/${cid}/selfie`;
+      try {
+        const u = JSON.parse(saved);
+        const name = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.nickname || u.studentId || u.phone || '-';
+        const banner = document.createElement('div');
+        banner.className = 'message info';
+        banner.style.marginBottom = '14px';
+        banner.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap: wrap;">
+            <div>📱 มีผู้ใช้ "<b>${escapeHtml(name)}</b>" อยู่ในเครื่องนี้</div>
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="primary" id="continueAsBtn" style="padding:6px 14px; font-size:13px; margin:0;">เข้าด้วย session นี้</button>
+              <button type="button" class="secondary" id="newPersonBtn" style="padding:6px 14px; font-size:13px; margin:0;">ลงทะเบียนคนใหม่</button>
+            </div>
+          </div>
+        `;
+        cInfo.parentNode.insertBefore(banner, cInfo.nextSibling);
+        document.getElementById('continueAsBtn').onclick = () => {
+          window.location.href = u.selfie ? `/c/${cid}/feed` : `/c/${cid}/selfie`;
+        };
+        document.getElementById('newPersonBtn').onclick = () => {
+          localStorage.removeItem(userKey);
+          banner.remove();
+          document.getElementById('phone').focus();
+        };
+      } catch (e) { localStorage.removeItem(userKey); }
     }
 
     async function loadClassroom() {
