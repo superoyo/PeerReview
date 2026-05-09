@@ -52,35 +52,8 @@
       d.onclick = () => applyTheme(d.dataset.theme);
     });
 
-    async function openDashboard(cid) {
-      // If has registered session for this classroom OR already unlocked dashboard this session, skip
-      const sessKey = `pr_dash_unlock_${cid}`;
-      if (localStorage.getItem(`pr_user_${cid}`) || sessionStorage.getItem(sessKey)) {
-        window.location.href = `/c/${cid}/dashboard`;
-        return;
-      }
-      const code = prompt('กรุณากรอกรหัสคลาส 4 หลัก เพื่อเข้า Dashboard');
-      if (code === null) return;
-      const trimmed = String(code).trim();
-      if (!/^\d{4}$/.test(trimmed)) {
-        alert('รหัสต้องเป็นตัวเลข 4 หลัก');
-        return;
-      }
-      try {
-        const r = await fetch(`/api/c/${cid}/validate-enroll-code`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enrollCode: trimmed })
-        });
-        if (!r.ok) {
-          alert('รหัสคลาสไม่ถูกต้อง');
-          return;
-        }
-        sessionStorage.setItem(sessKey, '1');
-        window.location.href = `/c/${cid}/dashboard`;
-      } catch (e) {
-        alert('เกิดข้อผิดพลาด: ' + e.message);
-      }
+    function openDashboard(cid) {
+      window.location.href = `/c/${cid}/dashboard`;
     }
 
     async function load() {

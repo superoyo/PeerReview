@@ -20,15 +20,7 @@
       <button type="submit" class="primary">ถัดไป</button>
     </form>
 
-    <!-- Step 2: Enroll code -->
-    <form id="codeForm" style="display:none;">
-      <p class="hint" style="margin-top:8px;">🔑 กรุณากรอกรหัสคลาส 4 หลัก ที่อาจารย์แจ้ง</p>
-      <label for="enrollCode">รหัสคลาส 4 หลัก *</label>
-      <input type="text" id="enrollCode" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="0000" required style="font-size: 22px; letter-spacing: 8px; text-align: center;" />
-      <button type="submit" class="primary" id="codeSubmitBtn">ถัดไป</button>
-    </form>
-
-    <!-- Step 3: Profile fields (only for new users) -->
+    <!-- Step 2: Profile fields -->
     <form id="profileForm" style="display:none;">
       <p class="hint" id="profileHint" style="margin-top:8px;">📝 กรอกข้อมูลโปรไฟล์</p>
       <div id="profileFieldsContainer"></div>
@@ -54,7 +46,6 @@
     const cid = window.location.pathname.split('/')[2];
     const cInfo = document.getElementById('cInfo');
     const phoneForm = document.getElementById('phoneForm');
-    const codeForm = document.getElementById('codeForm');
     const profileForm = document.getElementById('profileForm');
     const stepLabel = document.getElementById('stepLabel');
     const msg = document.getElementById('message');
@@ -159,7 +150,7 @@
       }
     }
 
-    // Step 1: Phone (no duplicate check — every phone may register fresh)
+    // Step 1: Phone → go straight to profile (no enroll code required)
     phoneForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       msg.innerHTML = '';
@@ -169,46 +160,14 @@
         return;
       }
       phoneForm.style.display = 'none';
-      codeForm.style.display = '';
-      stepLabel.textContent = 'ขั้นที่ 2: กรอกรหัสคลาส 4 หลัก';
-      document.getElementById('codeSubmitBtn').textContent = 'ถัดไป';
-      document.getElementById('enrollCode').focus();
-    });
-
-    // Step 2: Enroll code
-    codeForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      msg.innerHTML = '';
-      const code = document.getElementById('enrollCode').value.trim();
-      if (!/^\d{4}$/.test(code)) {
-        msg.innerHTML = `<div class="message error">รหัสต้องเป็นตัวเลข 4 หลัก</div>`;
-        return;
-      }
-      // Validate code first
-      try {
-        const r = await fetch(`/api/c/${cid}/validate-enroll-code`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enrollCode: code })
-        });
-        const d = await r.json();
-        if (!r.ok) {
-          msg.innerHTML = `<div class="message error">${escapeHtml(d.error)}</div>`;
-          return;
-        }
-      } catch (err) {
-        msg.innerHTML = `<div class="message error">${escapeHtml(err.message)}</div>`;
-        return;
-      }
-
-      // Show profile form (every registration is fresh — no duplicate check)
-      codeForm.style.display = 'none';
       buildProfileForm();
       profileForm.style.display = '';
-      stepLabel.textContent = 'ขั้นที่ 3: กรอกข้อมูลโปรไฟล์';
+      stepLabel.textContent = 'ขั้นที่ 2: กรอกข้อมูลโปรไฟล์';
+      const fnInput = profileForm.querySelector('input[name="firstName"]');
+      if (fnInput) fnInput.focus();
     });
 
-    // Step 3: Profile (new users)
+    // Step 2: Profile (new users)
     profileForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       msg.innerHTML = '';
@@ -230,7 +189,6 @@
     async function doRegister(extra) {
       const payload = {
         phone: document.getElementById('phone').value.replace(/[^\d+]/g, '').trim(),
-        enrollCode: document.getElementById('enrollCode').value.trim(),
         ...extra
       };
       try {

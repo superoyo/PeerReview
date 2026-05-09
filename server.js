@@ -161,10 +161,7 @@ app.post('/api/c/:cid/register', loadClassroom, (req, res) => {
           faculty, department, university, company, position } = body;
   const ph = normalizePhone(phone);
   if (!ph) return res.status(400).json({ error: 'กรุณากรอกเบอร์มือถือ' });
-  if (!enrollCode) return res.status(400).json({ error: 'กรุณากรอกรหัสคลาส 4 หลัก' });
-  if (String(enrollCode).trim() !== c.enrollCode) {
-    return res.status(403).json({ error: 'รหัสคลาสไม่ถูกต้อง' });
-  }
+  // No enroll code required — anyone with the link can register
 
   // Note: phone uniqueness is NOT enforced — any phone may register multiple times
   // (each registration creates a separate user record)
