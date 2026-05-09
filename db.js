@@ -173,9 +173,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_votes_classroom ON votes(classroomId);
   CREATE INDEX IF NOT EXISTS idx_votes_voter ON votes(voterId);
   CREATE INDEX IF NOT EXISTS idx_votes_target ON votes(targetId);
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_classroom_phone
-    ON users(classroomId, phone) WHERE phone IS NOT NULL AND phone != '';
 `);
+// Drop legacy unique-phone constraint if exists, replace with non-unique index
+try { db.exec(`DROP INDEX IF EXISTS idx_users_classroom_phone`); } catch (e) {}
+try { db.exec(`CREATE INDEX IF NOT EXISTS idx_users_classroom_phone ON users(classroomId, phone)`); } catch (e) {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS assignments (

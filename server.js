@@ -166,12 +166,10 @@ app.post('/api/c/:cid/register', loadClassroom, (req, res) => {
     return res.status(403).json({ error: 'รหัสคลาสไม่ถูกต้อง' });
   }
 
-  const existing = db.getUserByPhone(c.id, ph);
-  if (existing) {
-    return res.json({ ok: true, user: existing, message: 'เข้าสู่ระบบสำเร็จ' });
-  }
+  // Note: phone uniqueness is NOT enforced — any phone may register multiple times
+  // (each registration creates a separate user record)
 
-  // New registration: validate required fields based on classroom profileFields config
+  // Validate required fields based on classroom profileFields config
   const fn = String(firstName || '').trim();
   const ln = String(lastName || '').trim();
   const sid = String(studentId || '').trim();

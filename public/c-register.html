@@ -187,7 +187,7 @@
       }
     }
 
-    // Step 1: Phone
+    // Step 1: Phone (no duplicate check — every phone may register fresh)
     phoneForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       msg.innerHTML = '';
@@ -196,25 +196,12 @@
         msg.innerHTML = `<div class="message error">กรุณากรอกเบอร์มือถือ</div>`;
         return;
       }
-      try {
-        const res = await fetch(`/api/c/${cid}/check-phone`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone })
-        });
-        const data = await res.json();
-        phoneForm.style.display = 'none';
-        isReturning = !!data.exists;
-        codeForm.style.display = '';
-        stepLabel.textContent = 'ขั้นที่ 2: กรอกรหัสคลาส 4 หลัก';
-        msg.innerHTML = isReturning
-          ? `<div class="message info">เคยลงทะเบียนแล้ว — กรอกรหัสคลาสเพื่อเข้าระบบ</div>`
-          : '';
-        document.getElementById('codeSubmitBtn').textContent = isReturning ? 'เข้าสู่คลาส' : 'ถัดไป';
-        document.getElementById('enrollCode').focus();
-      } catch (err) {
-        msg.innerHTML = `<div class="message error">${escapeHtml(err.message)}</div>`;
-      }
+      isReturning = false;
+      phoneForm.style.display = 'none';
+      codeForm.style.display = '';
+      stepLabel.textContent = 'ขั้นที่ 2: กรอกรหัสคลาส 4 หลัก';
+      document.getElementById('codeSubmitBtn').textContent = 'ถัดไป';
+      document.getElementById('enrollCode').focus();
     });
 
     // Step 2: Enroll code
@@ -243,12 +230,7 @@
         return;
       }
 
-      // If returning user, register directly (login)
-      if (isReturning) {
-        await doRegister({});
-        return;
-      }
-      // New user: show profile form
+      // Show profile form (every registration is fresh — no duplicate check)
       codeForm.style.display = 'none';
       buildProfileForm();
       profileForm.style.display = '';
